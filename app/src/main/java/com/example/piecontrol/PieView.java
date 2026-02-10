@@ -9,6 +9,9 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -41,6 +44,7 @@ public class PieView extends View {
     private int highlightRing = -1;
     private int highlightSlot = -1;
 
+    private final Vibrator vibrator;
     private OnItemSelectedListener listener;
 
     public interface OnItemSelectedListener {
@@ -54,6 +58,7 @@ public class PieView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(10 * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
+        vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         loadConfig();
     }
 
@@ -166,14 +171,16 @@ public class PieView extends View {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_MOVE:
                 int[] hit = hitTest(tx, ty);
-                if (hit != null) {
-                    highlightRing = hit[0];
-                    highlightSlot = hit[1];
-                } else {
-                    highlightRing = -1;
-                    highlightSlot = -1;
+                int newRing = hit != null ? hit[0] : -1;
+                int newSlot = hit != null ? hit[1] : -1;
+                if (newRing != highlightRing || newSlot != highlightSlot) {
+                    highlightRing = newRing;
+                    highlightSlot = newSlot;
+                    if (newRing >= 0) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(10, 60));
+                    }
+                    invalidate();
                 }
-                invalidate();
                 return true;
 
             case MotionEvent.ACTION_UP:
@@ -182,6 +189,7 @@ public class PieView extends View {
                             ? itemsByLevel.get(highlightRing) : null;
                     if (items != null && highlightSlot < items.size()) {
                         PieItem selected = items.get(highlightSlot);
+                        vibrator.vibrate(VibrationEffect.createOneShot(20, 120));
                         if (listener != null) listener.onItemSelected(selected);
                     } else {
                         if (listener != null) listener.onDismiss();
