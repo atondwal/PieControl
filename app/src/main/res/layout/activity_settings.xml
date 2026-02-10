@@ -9,6 +9,101 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <!-- Appearance -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Appearance"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+            <TextView
+                android:id="@+id/color_bg_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Slice color"
+                android:textSize="14sp" />
+            <View
+                android:id="@+id/color_bg_preview"
+                android:layout_width="48dp"
+                android:layout_height="32dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+            <TextView
+                android:id="@+id/color_highlight_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Highlight color"
+                android:textSize="14sp" />
+            <View
+                android:id="@+id/color_highlight_preview"
+                android:layout_width="48dp"
+                android:layout_height="32dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+            <TextView
+                android:id="@+id/color_stroke_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Stroke color"
+                android:textSize="14sp" />
+            <View
+                android:id="@+id/color_stroke_preview"
+                android:layout_width="48dp"
+                android:layout_height="32dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/icon_size_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Icon size: 36dp"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/icon_size_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="48"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/stroke_width_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Stroke width: 1.5dp"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/stroke_width_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="50"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Pie Geometry -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -57,8 +152,23 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:max="20"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/arc_span_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Arc span: 180\u00B0"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/arc_span_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="270"
             android:layout_marginBottom="16dp" />
 
+        <!-- Trigger Zone -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -109,6 +219,7 @@
             android:max="100"
             android:layout_marginBottom="16dp" />
 
+        <!-- Vibration -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -121,7 +232,7 @@
             android:id="@+id/vibe_tick_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Tick: 60"
+            android:text="Tick amplitude: 60"
             android:textSize="14sp" />
 
         <SeekBar
@@ -135,14 +246,42 @@
             android:id="@+id/vibe_select_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Select: 120"
+            android:text="Select amplitude: 120"
             android:textSize="14sp" />
 
         <SeekBar
             android:id="@+id/vibe_select_seek"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="255" />
+            android:max="255"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/vibe_tick_ms_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tick duration: 10ms"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/vibe_tick_ms_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="99"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:id="@+id/vibe_select_ms_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Select duration: 20ms"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/vibe_select_ms_seek"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="199" />
 
     </LinearLayout>
 </ScrollView>

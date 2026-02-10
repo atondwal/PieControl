@@ -11,7 +11,6 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
-import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -22,11 +21,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PieView extends View {
-    private static final int COLOR_BG = 0xDD333333;
-    private static final int COLOR_HIGHLIGHT = 0xDD5588CC;
-    private static final int COLOR_STROKE = 0xDD888888;
-    private static final int ICON_SIZE_DP = 36;
-
     private final Paint slicePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,6 +38,14 @@ public class PieView extends View {
     private List<List<PieItem>> itemsByLevel;
     private int vibeTickAmplitude;
     private int vibeSelectAmplitude;
+    private int colorBg;
+    private int colorHighlight;
+    private int colorStroke;
+    private int iconSizeDp;
+    private float strokeWidthDp;
+    private int vibeTickDuration;
+    private int vibeSelectDuration;
+    private float totalAngle;
 
     private int highlightRing = -1;
     private int highlightSlot = -1;
@@ -63,8 +65,6 @@ public class PieView extends View {
         textPaint.setTextSize(10 * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
         strokePaint.setStyle(Paint.Style.STROKE);
-        strokePaint.setStrokeWidth(1.5f * density);
-        strokePaint.setColor(COLOR_STROKE);
         vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         loadConfig();
     }
@@ -84,6 +84,17 @@ public class PieView extends View {
         ringWidthDp = prefs.getInt("ring_width", 51);
         innerRadiusDp = prefs.getInt("inner_radius", 60);
         gapDegrees = prefs.getInt("gap_degrees", 0);
+        colorBg = prefs.getInt("color_bg", 0xDD333333);
+        colorHighlight = prefs.getInt("color_highlight", 0xDD5588CC);
+        colorStroke = prefs.getInt("color_stroke", 0xDD888888);
+        iconSizeDp = prefs.getInt("icon_size", 36);
+        strokeWidthDp = prefs.getInt("stroke_width_tenths", 15) / 10f;
+        vibeTickDuration = prefs.getInt("vibe_tick_ms", 10);
+        vibeSelectDuration = prefs.getInt("vibe_select_ms", 20);
+        totalAngle = prefs.getInt("arc_span", 180);
+
+        strokePaint.setStrokeWidth(strokeWidthDp * density);
+        strokePaint.setColor(colorStroke);
         loadItems();
     }
 
@@ -133,10 +144,9 @@ public class PieView extends View {
             if (slots == 0) continue;
             float rInner = innerRadius + ring * ringWidth;
             float rOuter = rInner + ringWidth;
-            float totalAngle = 180f;
             float gapTotal = gapDegrees * slots;
             float sweep = (totalAngle - gapTotal) / slots;
-            float startBase = -90f; // top of half-circle (right-facing from left edge)
+            float startBase = -totalAngle / 2f;
 
             List<PieItem> items = ring < itemsByLevel.size() ? itemsByLevel.get(ring) : null;
 
@@ -144,7 +154,7 @@ public class PieView extends View {
                 float startAngle = startBase + slot * (sweep + gapDegrees);
 
                 boolean highlighted = (ring == highlightRing && slot == highlightSlot);
-                slicePaint.setColor(highlighted ? COLOR_HIGHLIGHT : COLOR_BG);
+                slicePaint.setColor(highlighted ? colorHighlight : colorBg);
 
                 // Draw arc slice
                 slicePath.reset();
@@ -166,7 +176,7 @@ public class PieView extends View {
                 if (item != null) {
                     Drawable icon = loadIcon(item);
                     if (icon != null) {
-                        int iconSize = (int) (ICON_SIZE_DP * density);
+                        int iconSize = (int) (iconSizeDp * density);
                         int half = iconSize / 2;
                         icon.setBounds((int) ix - half, (int) iy - half,
                                        (int) ix + half, (int) iy + half);
@@ -206,7 +216,7 @@ public class PieView extends View {
                     highlightSlot = newSlot;
                     if (newRing >= 0) {
                         if (vibeTickAmplitude > 0)
-                            vibrator.vibrate(VibrationEffect.createOneShot(10, vibeTickAmplitude));
+                            vibrator.vibrate(VibrationEffect.createOneShot(vibeTickDuration, vibeTickAmplitude));
                     }
                     invalidate();
                 }
@@ -219,7 +229,7 @@ public class PieView extends View {
                     if (items != null && highlightSlot < items.size()) {
                         PieItem selected = items.get(highlightSlot);
                         if (vibeSelectAmplitude > 0)
-                            vibrator.vibrate(VibrationEffect.createOneShot(20, vibeSelectAmplitude));
+                            vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
                         if (listener != null) listener.onItemSelected(selected);
                     } else {
                         if (listener != null) listener.onDismiss();
@@ -258,10 +268,9 @@ public class PieView extends View {
             if (dist >= rInner && dist < rOuter) {
                 int slots = slotsPerRing[ring];
                 if (slots == 0) break;
-                float totalAngle = 180f;
                 float gapTotal = gapDegrees * slots;
                 float sweep = (totalAngle - gapTotal) / slots;
-                float startBase = -90f;
+                float startBase = -totalAngle / 2f;
 
                 for (int slot = 0; slot < slots; slot++) {
                     float startAngle = startBase + slot * (sweep + gapDegrees);
