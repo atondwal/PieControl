@@ -13,34 +13,6 @@
         android:textStyle="bold"
         android:layout_marginBottom="12dp" />
 
-    <TextView
-        android:id="@+id/vibe_tick_label"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Tick vibration: 60"
-        android:textSize="14sp" />
-
-    <SeekBar
-        android:id="@+id/vibe_tick_seek"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="255"
-        android:layout_marginBottom="4dp" />
-
-    <TextView
-        android:id="@+id/vibe_select_label"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Select vibration: 120"
-        android:textSize="14sp" />
-
-    <SeekBar
-        android:id="@+id/vibe_select_seek"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:max="255"
-        android:layout_marginBottom="12dp" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/items_list"
         android:layout_width="match_parent"

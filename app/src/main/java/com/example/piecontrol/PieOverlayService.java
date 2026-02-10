@@ -7,7 +7,9 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.os.IBinder;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.WindowManager;
 
@@ -37,6 +39,7 @@ public class PieOverlayService extends Service {
             if (pieView != null) {
                 pieView.reload();
             }
+            rebuildTriggerZone();
         }
         return START_STICKY;
     }
@@ -75,15 +78,47 @@ public class PieOverlayService extends Service {
                 .build();
     }
 
+    private void rebuildTriggerZone() {
+        if (triggerView != null) {
+            try { windowManager.removeView(triggerView); } catch (Exception ignored) {}
+            triggerView = null;
+        }
+        addTriggerZone();
+    }
+
     private void addTriggerZone() {
         triggerView = new TriggerZoneView(this);
         triggerView.setOnTriggerListener(this::showPie);
 
-        int triggerWidth = (int) (20 * getResources().getDisplayMetrics().density);
+        float density = getResources().getDisplayMetrics().density;
+
+        int widthDp = 20;
+        int heightPct = 43;
+        int posPct = 44;
+
+        int triggerWidthPx = (int) (widthDp * density);
+
+        // Get screen height
+        Display display = windowManager.getDefaultDisplay();
+        Point screenSize = new Point();
+        display.getRealSize(screenSize);
+        int screenHeight = screenSize.y;
+
+        int triggerHeight;
+        int triggerY;
+        if (heightPct >= 100) {
+            triggerHeight = WindowManager.LayoutParams.MATCH_PARENT;
+            triggerY = 0;
+        } else {
+            triggerHeight = screenHeight * heightPct / 100;
+            // posPct positions the trigger within the remaining space
+            int maxOffset = screenHeight - triggerHeight;
+            triggerY = maxOffset * posPct / 100;
+        }
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                triggerWidth,
-                WindowManager.LayoutParams.MATCH_PARENT,
+                triggerWidthPx,
+                triggerHeight,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -91,7 +126,7 @@ public class PieOverlayService extends Service {
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.LEFT | Gravity.TOP;
         params.x = 0;
-        params.y = 0;
+        params.y = triggerY;
 
         windowManager.addView(triggerView, params);
     }
