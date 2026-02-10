@@ -26,6 +26,10 @@
             android:name=".AppPickerActivity"
             android:label="Pick an App" />
 
+        <activity
+            android:name=".SettingsActivity"
+            android:label="Settings" />
+
         <service
             android:name=".PieOverlayService"
             android:exported="false"

@@ -22,9 +22,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PieView extends View {
-    private static final float GAP_DEGREES = 2f;
-    private static final float RING_WIDTH_DP = 56f;
-    private static final float INNER_RADIUS_DP = 24f;
     private static final int COLOR_BG = 0xDD333333;
     private static final int COLOR_HIGHLIGHT = 0xDD5588CC;
     private static final int ICON_SIZE_DP = 36;
@@ -37,6 +34,9 @@ public class PieView extends View {
 
     private float density;
     private float centerX, centerY;
+    private float gapDegrees;
+    private float ringWidthDp;
+    private float innerRadiusDp;
     private int ringCount;
     private int[] slotsPerRing;
     private List<List<PieItem>> itemsByLevel;
@@ -76,6 +76,9 @@ public class PieView extends View {
         SharedPreferences prefs = getContext().getSharedPreferences("pie_config", Context.MODE_PRIVATE);
         vibeTickAmplitude = prefs.getInt("vibe_tick", 60);
         vibeSelectAmplitude = prefs.getInt("vibe_select", 120);
+        ringWidthDp = prefs.getInt("ring_width", 51);
+        innerRadiusDp = prefs.getInt("inner_radius", 60);
+        gapDegrees = prefs.getInt("gap_degrees", 0);
         loadItems();
     }
 
@@ -117,8 +120,8 @@ public class PieView extends View {
         canvas.save();
         canvas.translate(-loc[0], -loc[1]);
 
-        float ringWidth = RING_WIDTH_DP * density;
-        float innerRadius = INNER_RADIUS_DP * density;
+        float ringWidth = ringWidthDp * density;
+        float innerRadius = innerRadiusDp * density;
 
         for (int ring = 0; ring < ringCount; ring++) {
             int slots = slotsPerRing[ring];
@@ -126,14 +129,14 @@ public class PieView extends View {
             float rInner = innerRadius + ring * ringWidth;
             float rOuter = rInner + ringWidth;
             float totalAngle = 180f;
-            float gapTotal = GAP_DEGREES * slots;
+            float gapTotal = gapDegrees * slots;
             float sweep = (totalAngle - gapTotal) / slots;
             float startBase = -90f; // top of half-circle (right-facing from left edge)
 
             List<PieItem> items = ring < itemsByLevel.size() ? itemsByLevel.get(ring) : null;
 
             for (int slot = 0; slot < slots; slot++) {
-                float startAngle = startBase + slot * (sweep + GAP_DEGREES);
+                float startAngle = startBase + slot * (sweep + gapDegrees);
 
                 boolean highlighted = (ring == highlightRing && slot == highlightSlot);
                 slicePaint.setColor(highlighted ? COLOR_HIGHLIGHT : COLOR_BG);
@@ -239,8 +242,8 @@ public class PieView extends View {
         float dist = (float) Math.sqrt(dx * dx + dy * dy);
         float angle = (float) Math.toDegrees(Math.atan2(dy, dx)); // -180 to 180
 
-        float ringWidth = RING_WIDTH_DP * density;
-        float innerRadius = INNER_RADIUS_DP * density;
+        float ringWidth = ringWidthDp * density;
+        float innerRadius = innerRadiusDp * density;
 
         // Check which ring
         for (int ring = 0; ring < ringCount; ring++) {
@@ -250,12 +253,12 @@ public class PieView extends View {
                 int slots = slotsPerRing[ring];
                 if (slots == 0) break;
                 float totalAngle = 180f;
-                float gapTotal = GAP_DEGREES * slots;
+                float gapTotal = gapDegrees * slots;
                 float sweep = (totalAngle - gapTotal) / slots;
                 float startBase = -90f;
 
                 for (int slot = 0; slot < slots; slot++) {
-                    float startAngle = startBase + slot * (sweep + GAP_DEGREES);
+                    float startAngle = startBase + slot * (sweep + gapDegrees);
                     float endAngle = startAngle + sweep;
                     if (angle >= startAngle && angle < endAngle) {
                         return new int[]{ring, slot};

@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.os.IBinder;
@@ -90,11 +91,12 @@ public class PieOverlayService extends Service {
         triggerView = new TriggerZoneView(this);
         triggerView.setOnTriggerListener(this::showPie);
 
+        SharedPreferences prefs = getSharedPreferences("pie_config", MODE_PRIVATE);
         float density = getResources().getDisplayMetrics().density;
 
-        int widthDp = 20;
-        int heightPct = 43;
-        int posPct = 44;
+        int widthDp = prefs.getInt("trigger_width", 20);
+        int heightPct = prefs.getInt("trigger_height", 43);
+        int posPct = prefs.getInt("trigger_pos", 44);
 
         int triggerWidthPx = (int) (widthDp * density);
 

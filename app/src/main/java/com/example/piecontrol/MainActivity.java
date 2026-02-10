@@ -50,6 +50,9 @@ public class MainActivity extends Activity {
         recyclerView = findViewById(R.id.items_list);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        findViewById(R.id.btn_settings).setOnClickListener(v ->
+                startActivity(new Intent(this, SettingsActivity.class)));
+
         // Add Level button
         Button addLevelBtn = findViewById(R.id.btn_add_level);
         addLevelBtn.setOnClickListener(v -> {
