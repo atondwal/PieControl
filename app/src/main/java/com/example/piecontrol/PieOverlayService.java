@@ -126,10 +126,12 @@ public class PieOverlayService extends Service {
 
         windowManager.addView(pieView, params);
         pieShowing = true;
+        triggerView.setForwardTarget(pieView);
     }
 
     private void removePie() {
         if (pieView != null && pieShowing) {
+            triggerView.setForwardTarget(null);
             try { windowManager.removeView(pieView); } catch (Exception ignored) {}
             pieView = null;
             pieShowing = false;
