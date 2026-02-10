@@ -14,6 +14,7 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -66,6 +67,42 @@ public class MainActivity extends Activity {
             sb.append(prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5));
         }
         slotsEdit.setText(sb.toString());
+
+        // Vibration sliders
+        SeekBar vibeTickSeek = findViewById(R.id.vibe_tick_seek);
+        SeekBar vibeSelectSeek = findViewById(R.id.vibe_select_seek);
+        TextView vibeTickLabel = findViewById(R.id.vibe_tick_label);
+        TextView vibeSelectLabel = findViewById(R.id.vibe_select_label);
+
+        int tickVal = prefs.getInt("vibe_tick", 60);
+        int selectVal = prefs.getInt("vibe_select", 120);
+        vibeTickSeek.setProgress(tickVal);
+        vibeSelectSeek.setProgress(selectVal);
+        vibeTickLabel.setText("Tick vibration: " + tickVal);
+        vibeSelectLabel.setText("Select vibration: " + selectVal);
+
+        vibeTickSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean user) {
+                vibeTickLabel.setText("Tick vibration: " + progress);
+                if (user) {
+                    prefs.edit().putInt("vibe_tick", progress).apply();
+                    notifyServiceReload();
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
+        vibeSelectSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar sb, int progress, boolean user) {
+                vibeSelectLabel.setText("Select vibration: " + progress);
+                if (user) {
+                    prefs.edit().putInt("vibe_select", progress).apply();
+                    notifyServiceReload();
+                }
+            }
+            @Override public void onStartTrackingTouch(SeekBar sb) {}
+            @Override public void onStopTrackingTouch(SeekBar sb) {}
+        });
 
         applyBtn.setOnClickListener(v -> applyConfig());
         addBtn.setOnClickListener(v -> {

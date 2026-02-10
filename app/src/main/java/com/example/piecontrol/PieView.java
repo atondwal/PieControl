@@ -40,6 +40,8 @@ public class PieView extends View {
     private int ringCount;
     private int[] slotsPerRing;
     private List<List<PieItem>> itemsByLevel;
+    private int vibeTickAmplitude;
+    private int vibeSelectAmplitude;
 
     private int highlightRing = -1;
     private int highlightSlot = -1;
@@ -77,6 +79,8 @@ public class PieView extends View {
         for (int i = 0; i < ringCount; i++) {
             slotsPerRing[i] = prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5);
         }
+        vibeTickAmplitude = prefs.getInt("vibe_tick", 60);
+        vibeSelectAmplitude = prefs.getInt("vibe_select", 120);
         loadItems();
     }
 
@@ -101,6 +105,12 @@ public class PieView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        // Translate canvas to screen coordinates so drawing aligns with touch
+        int[] loc = new int[2];
+        getLocationOnScreen(loc);
+        canvas.save();
+        canvas.translate(-loc[0], -loc[1]);
+
         float ringWidth = RING_WIDTH_DP * density;
         float innerRadius = INNER_RADIUS_DP * density;
 
@@ -151,6 +161,8 @@ public class PieView extends View {
                 }
             }
         }
+
+        canvas.restore();
     }
 
     private Drawable loadIcon(PieItem item) {
@@ -164,8 +176,8 @@ public class PieView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        float tx = event.getX();
-        float ty = event.getY();
+        float tx = event.getRawX();
+        float ty = event.getRawY();
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
@@ -177,7 +189,8 @@ public class PieView extends View {
                     highlightRing = newRing;
                     highlightSlot = newSlot;
                     if (newRing >= 0) {
-                        vibrator.vibrate(VibrationEffect.createOneShot(10, 60));
+                        if (vibeTickAmplitude > 0)
+                            vibrator.vibrate(VibrationEffect.createOneShot(10, vibeTickAmplitude));
                     }
                     invalidate();
                 }
@@ -189,7 +202,8 @@ public class PieView extends View {
                             ? itemsByLevel.get(highlightRing) : null;
                     if (items != null && highlightSlot < items.size()) {
                         PieItem selected = items.get(highlightSlot);
-                        vibrator.vibrate(VibrationEffect.createOneShot(20, 120));
+                        if (vibeSelectAmplitude > 0)
+                            vibrator.vibrate(VibrationEffect.createOneShot(20, vibeSelectAmplitude));
                         if (listener != null) listener.onItemSelected(selected);
                     } else {
                         if (listener != null) listener.onDismiss();
