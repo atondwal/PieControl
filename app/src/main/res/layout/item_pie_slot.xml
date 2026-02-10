@@ -32,4 +32,22 @@
             android:textSize="12sp"
             android:textColor="#888888" />
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btn_move_up"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/arrow_up_float"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Move up"
+        android:scaleType="centerInside" />
+
+    <ImageButton
+        android:id="@+id/btn_move_down"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@android:drawable/arrow_down_float"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Move down"
+        android:scaleType="centerInside" />
 </LinearLayout>

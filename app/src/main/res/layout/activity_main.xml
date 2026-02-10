@@ -47,27 +47,12 @@
             android:hint="3,5" />
     </LinearLayout>
 
-    <LinearLayout
+    <Button
+        android:id="@+id/btn_apply_config"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
-
-        <Button
-            android:id="@+id/btn_apply_config"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Apply Config" />
-
-        <Button
-            android:id="@+id/btn_add"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Add App"
-            android:layout_marginStart="8dp" />
-    </LinearLayout>
+        android:layout_marginBottom="16dp"
+        android:text="Apply Config" />
 
     <TextView
         android:id="@+id/vibe_tick_label"
@@ -100,7 +85,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Configured Apps (long press to remove):"
+        android:text="Configured Apps (tap item to edit):"
         android:textSize="14sp"
         android:layout_marginBottom="8dp" />
 

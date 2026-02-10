@@ -27,4 +27,7 @@ public interface PieItemDao {
 
     @Query("DELETE FROM pie_items WHERE id = :id")
     void deleteById(int id);
+
+    @Query("UPDATE pie_items SET position = position - 1 WHERE level = :level AND position > :pos")
+    void compactPositions(int level, int pos);
 }

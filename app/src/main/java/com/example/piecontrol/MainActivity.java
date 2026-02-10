@@ -10,12 +10,11 @@ import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -33,15 +32,20 @@ import java.util.List;
 public class MainActivity extends Activity {
     private static final int REQ_APP_PICK = 1;
     private static final int REQ_OVERLAY = 2;
+    private static final int REQ_APP_REPLACE = 3;
 
     private PieItemDao dao;
     private SharedPreferences prefs;
     private RecyclerView recyclerView;
-    private ItemAdapter adapter;
-    private List<PieItem> items = new ArrayList<>();
+    private SectionedAdapter adapter;
 
     private EditText ringCountEdit;
     private EditText slotsEdit;
+
+    // For per-level add: which level the user tapped "+" on
+    private int pendingAddLevel = -1;
+    // For replace: which PieItem id is being replaced
+    private int pendingReplaceItemId = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,7 +58,6 @@ public class MainActivity extends Activity {
         ringCountEdit = findViewById(R.id.ring_count);
         slotsEdit = findViewById(R.id.slots_config);
         Button applyBtn = findViewById(R.id.btn_apply_config);
-        Button addBtn = findViewById(R.id.btn_add);
         recyclerView = findViewById(R.id.items_list);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -105,10 +108,6 @@ public class MainActivity extends Activity {
         });
 
         applyBtn.setOnClickListener(v -> applyConfig());
-        addBtn.setOnClickListener(v -> {
-            Intent i = new Intent(this, AppPickerActivity.class);
-            startActivityForResult(i, REQ_APP_PICK);
-        });
 
         loadItems();
         checkOverlayPermission();
@@ -134,34 +133,50 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Overlay permission required", Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQ_APP_PICK && resultCode == RESULT_OK && data != null) {
-            showLevelDialog(data);
+            addAppToLevel(data, pendingAddLevel);
+        } else if (requestCode == REQ_APP_REPLACE && resultCode == RESULT_OK && data != null) {
+            replaceApp(data);
         }
     }
 
-    private void showLevelDialog(Intent data) {
+    private void addAppToLevel(Intent data, int level) {
+        if (level < 0) return;
         String name = data.getStringExtra(AppPickerActivity.EXTRA_APP_NAME);
         String pkg = data.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME);
         String act = data.getStringExtra(AppPickerActivity.EXTRA_ACTIVITY_NAME);
 
-        int ringCount = prefs.getInt("ring_count", 2);
-        String[] levels = new String[ringCount];
-        for (int i = 0; i < ringCount; i++) levels[i] = "Level " + (i + 1);
+        List<PieItem> existing = dao.getItemsByLevel(level);
+        PieItem item = new PieItem();
+        item.level = level;
+        item.position = existing.size();
+        item.name = name;
+        item.packageName = pkg;
+        item.activityName = act;
+        dao.insert(item);
+        loadItems();
+        notifyServiceReload();
+    }
 
-        new AlertDialog.Builder(this)
-                .setTitle("Add " + name + " to which level?")
-                .setItems(levels, (d, which) -> {
-                    List<PieItem> existing = dao.getItemsByLevel(which);
-                    PieItem item = new PieItem();
-                    item.level = which;
-                    item.position = existing.size();
-                    item.name = name;
-                    item.packageName = pkg;
-                    item.activityName = act;
-                    dao.insert(item);
-                    loadItems();
-                    notifyServiceReload();
-                })
-                .show();
+    private void replaceApp(Intent data) {
+        if (pendingReplaceItemId < 0) return;
+        String name = data.getStringExtra(AppPickerActivity.EXTRA_APP_NAME);
+        String pkg = data.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME);
+        String act = data.getStringExtra(AppPickerActivity.EXTRA_ACTIVITY_NAME);
+
+        // Find the item and update it
+        List<PieItem> all = dao.getAllItems();
+        for (PieItem item : all) {
+            if (item.id == pendingReplaceItemId) {
+                item.name = name;
+                item.packageName = pkg;
+                item.activityName = act;
+                dao.update(item);
+                break;
+            }
+        }
+        pendingReplaceItemId = -1;
+        loadItems();
+        notifyServiceReload();
     }
 
     private void applyConfig() {
@@ -181,6 +196,7 @@ public class MainActivity extends Activity {
             }
             editor.apply();
             Toast.makeText(this, "Config saved", Toast.LENGTH_SHORT).show();
+            loadItems(); // rebuild sections in case ring count changed
             notifyServiceReload();
         } catch (NumberFormatException e) {
             Toast.makeText(this, "Invalid input", Toast.LENGTH_SHORT).show();
@@ -188,9 +204,145 @@ public class MainActivity extends Activity {
     }
 
     private void loadItems() {
-        items = dao.getAllItems();
-        adapter = new ItemAdapter();
-        recyclerView.setAdapter(adapter);
+        int ringCount = prefs.getInt("ring_count", 2);
+        List<Object> rows = new ArrayList<>();
+        for (int level = 0; level < ringCount; level++) {
+            List<PieItem> levelItems = dao.getItemsByLevel(level);
+            int maxSlots = prefs.getInt("slots_ring_" + level, level == 0 ? 3 : 5);
+            rows.add(new LevelHeader(level, levelItems.size(), maxSlots));
+            rows.addAll(levelItems);
+        }
+        if (adapter == null) {
+            adapter = new SectionedAdapter(rows);
+            recyclerView.setAdapter(adapter);
+        } else {
+            adapter.updateRows(rows);
+        }
+    }
+
+    private void swapPositions(PieItem a, PieItem b) {
+        int tmpPos = a.position;
+        a.position = b.position;
+        b.position = tmpPos;
+        dao.update(a);
+        dao.update(b);
+        loadItems();
+        notifyServiceReload();
+    }
+
+    private void moveUp(PieItem item) {
+        if (item.position <= 0) return;
+        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        for (PieItem sib : siblings) {
+            if (sib.position == item.position - 1) {
+                swapPositions(item, sib);
+                return;
+            }
+        }
+    }
+
+    private void moveDown(PieItem item) {
+        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        for (PieItem sib : siblings) {
+            if (sib.position == item.position + 1) {
+                swapPositions(item, sib);
+                return;
+            }
+        }
+    }
+
+    private void showEditDialog(PieItem item) {
+        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        boolean canUp = item.position > 0;
+        boolean canDown = item.position < siblings.size() - 1;
+
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+
+        if (canUp) {
+            options.add("Move Up");
+            actions.add(() -> moveUp(item));
+        }
+        if (canDown) {
+            options.add("Move Down");
+            actions.add(() -> moveDown(item));
+        }
+
+        int ringCount = prefs.getInt("ring_count", 2);
+        if (ringCount > 1) {
+            options.add("Move to Level...");
+            actions.add(() -> showMoveLevelDialog(item));
+        }
+
+        options.add("Replace App");
+        actions.add(() -> {
+            pendingReplaceItemId = item.id;
+            Intent i = new Intent(this, AppPickerActivity.class);
+            startActivityForResult(i, REQ_APP_REPLACE);
+        });
+
+        options.add("Delete");
+        actions.add(() -> showDeleteConfirmation(item));
+
+        new AlertDialog.Builder(this)
+                .setTitle(item.name)
+                .setItems(options.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .show();
+    }
+
+    private void showMoveLevelDialog(PieItem item) {
+        int ringCount = prefs.getInt("ring_count", 2);
+        List<String> levels = new ArrayList<>();
+        List<Integer> levelIndices = new ArrayList<>();
+        for (int i = 0; i < ringCount; i++) {
+            if (i != item.level) {
+                int count = dao.getItemsByLevel(i).size();
+                int max = prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5);
+                levels.add("Level " + (i + 1) + " (" + count + "/" + max + " slots)");
+                levelIndices.add(i);
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Move to which level?")
+                .setItems(levels.toArray(new String[0]), (d, which) -> {
+                    int oldLevel = item.level;
+                    int oldPos = item.position;
+                    int newLevel = levelIndices.get(which);
+
+                    // Remove from old level and compact
+                    dao.deleteById(item.id);
+                    dao.compactPositions(oldLevel, oldPos);
+
+                    // Add to new level at end
+                    List<PieItem> newLevelItems = dao.getItemsByLevel(newLevel);
+                    PieItem moved = new PieItem();
+                    moved.level = newLevel;
+                    moved.position = newLevelItems.size();
+                    moved.name = item.name;
+                    moved.packageName = item.packageName;
+                    moved.activityName = item.activityName;
+                    dao.insert(moved);
+
+                    loadItems();
+                    notifyServiceReload();
+                })
+                .show();
+    }
+
+    private void showDeleteConfirmation(PieItem item) {
+        new AlertDialog.Builder(this)
+                .setTitle("Remove " + item.name + "?")
+                .setPositiveButton("Remove", (d, w) -> {
+                    int level = item.level;
+                    int pos = item.position;
+                    dao.deleteById(item.id);
+                    dao.compactPositions(level, pos);
+                    loadItems();
+                    notifyServiceReload();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void startOverlayService() {
@@ -204,54 +356,117 @@ public class MainActivity extends Activity {
         startForegroundService(intent);
     }
 
-    private class ItemAdapter extends RecyclerView.Adapter<ItemAdapter.VH> {
-        @NonNull
-        @Override
-        public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            View v = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_pie_slot, parent, false);
-            return new VH(v);
+    // --- Data class for section headers ---
+    static class LevelHeader {
+        final int level;
+        final int count;
+        final int maxSlots;
+        LevelHeader(int level, int count, int maxSlots) {
+            this.level = level;
+            this.count = count;
+            this.maxSlots = maxSlots;
+        }
+    }
+
+    // --- Sectioned adapter ---
+    private class SectionedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        private static final int TYPE_HEADER = 0;
+        private static final int TYPE_ITEM = 1;
+        private final List<Object> rows;
+
+        SectionedAdapter(List<Object> rows) {
+            this.rows = new ArrayList<>(rows);
+        }
+
+        void updateRows(List<Object> newRows) {
+            rows.clear();
+            rows.addAll(newRows);
+            notifyDataSetChanged();
         }
 
         @Override
-        public void onBindViewHolder(@NonNull VH holder, int position) {
-            PieItem item = items.get(position);
-            holder.name.setText(item.name);
-            holder.info.setText("Level " + (item.level + 1) + ", Slot " + (item.position + 1));
-            try {
-                holder.icon.setImageDrawable(
-                        getPackageManager().getApplicationIcon(item.packageName));
-            } catch (Exception e) {
-                holder.icon.setImageResource(android.R.drawable.sym_def_app_icon);
+        public int getItemViewType(int position) {
+            return rows.get(position) instanceof LevelHeader ? TYPE_HEADER : TYPE_ITEM;
+        }
+
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            LayoutInflater inf = LayoutInflater.from(parent.getContext());
+            if (viewType == TYPE_HEADER) {
+                View v = inf.inflate(R.layout.item_level_header, parent, false);
+                return new HeaderVH(v);
+            } else {
+                View v = inf.inflate(R.layout.item_pie_slot, parent, false);
+                return new ItemVH(v);
             }
-            holder.itemView.setOnLongClickListener(v -> {
-                new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("Remove " + item.name + "?")
-                        .setPositiveButton("Remove", (d, w) -> {
-                            dao.deleteById(item.id);
-                            loadItems();
-                            notifyServiceReload();
-                        })
-                        .setNegativeButton("Cancel", null)
-                        .show();
-                return true;
-            });
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            if (holder instanceof HeaderVH) {
+                LevelHeader header = (LevelHeader) rows.get(position);
+                HeaderVH hv = (HeaderVH) holder;
+                hv.label.setText("Level " + (header.level + 1)
+                        + " (" + header.count + "/" + header.maxSlots + " slots)");
+                hv.addBtn.setOnClickListener(v -> {
+                    pendingAddLevel = header.level;
+                    Intent i = new Intent(MainActivity.this, AppPickerActivity.class);
+                    startActivityForResult(i, REQ_APP_PICK);
+                });
+            } else {
+                PieItem item = (PieItem) rows.get(position);
+                ItemVH iv = (ItemVH) holder;
+                iv.name.setText(item.name);
+                iv.info.setText("Slot " + (item.position + 1));
+                try {
+                    iv.icon.setImageDrawable(
+                            getPackageManager().getApplicationIcon(item.packageName));
+                } catch (Exception e) {
+                    iv.icon.setImageResource(android.R.drawable.sym_def_app_icon);
+                }
+
+                // Determine if this is first/last in its level
+                List<PieItem> siblings = dao.getItemsByLevel(item.level);
+                boolean isFirst = item.position <= 0;
+                boolean isLast = item.position >= siblings.size() - 1;
+                iv.btnUp.setVisibility(isFirst ? View.INVISIBLE : View.VISIBLE);
+                iv.btnDown.setVisibility(isLast ? View.INVISIBLE : View.VISIBLE);
+
+                iv.btnUp.setOnClickListener(v -> moveUp(item));
+                iv.btnDown.setOnClickListener(v -> moveDown(item));
+                iv.itemView.setOnClickListener(v -> showEditDialog(item));
+            }
         }
 
         @Override
         public int getItemCount() {
-            return items.size();
+            return rows.size();
         }
 
-        class VH extends RecyclerView.ViewHolder {
+        class HeaderVH extends RecyclerView.ViewHolder {
+            TextView label;
+            Button addBtn;
+            HeaderVH(View v) {
+                super(v);
+                label = v.findViewById(R.id.header_label);
+                addBtn = v.findViewById(R.id.header_add_btn);
+            }
+        }
+
+        class ItemVH extends RecyclerView.ViewHolder {
             ImageView icon;
             TextView name;
             TextView info;
-            VH(View v) {
+            ImageButton btnUp;
+            ImageButton btnDown;
+            ItemVH(View v) {
                 super(v);
                 icon = v.findViewById(R.id.slot_icon);
                 name = v.findViewById(R.id.slot_name);
                 info = v.findViewById(R.id.slot_info);
+                btnUp = v.findViewById(R.id.btn_move_up);
+                btnDown = v.findViewById(R.id.btn_move_down);
             }
         }
     }
