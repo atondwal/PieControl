@@ -24,9 +24,11 @@ import java.util.List;
 public class PieView extends View {
     private static final int COLOR_BG = 0xDD333333;
     private static final int COLOR_HIGHLIGHT = 0xDD5588CC;
+    private static final int COLOR_STROKE = 0xDD888888;
     private static final int ICON_SIZE_DP = 36;
 
     private final Paint slicePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path slicePath = new Path();
     private final RectF outerRect = new RectF();
@@ -60,6 +62,9 @@ public class PieView extends View {
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(10 * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
+        strokePaint.setStyle(Paint.Style.STROKE);
+        strokePaint.setStrokeWidth(1.5f * density);
+        strokePaint.setColor(COLOR_STROKE);
         vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         loadConfig();
     }
@@ -149,6 +154,7 @@ public class PieView extends View {
                 slicePath.arcTo(innerRect, startAngle + sweep, -sweep);
                 slicePath.close();
                 canvas.drawPath(slicePath, slicePaint);
+                canvas.drawPath(slicePath, strokePaint);
 
                 // Draw icon or text at midpoint
                 float midAngle = (float) Math.toRadians(startAngle + sweep / 2f);
