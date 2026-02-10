@@ -10,6 +10,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -34,11 +35,17 @@ public class MainActivity extends Activity {
     private PieItemDao dao;
     private RecyclerView recyclerView;
     private SectionedAdapter adapter;
+    private TextView breadcrumb;
 
     // For per-level add: which level the user tapped "+" on
     private int pendingAddLevel = -1;
     // For replace: which PieItem id is being replaced
     private int pendingReplaceItemId = -1;
+
+    // Folder navigation
+    private int currentParentId = 0;
+    private final List<Integer> parentStack = new ArrayList<>();
+    private final List<String> parentNames = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +57,9 @@ public class MainActivity extends Activity {
         recyclerView = findViewById(R.id.items_list);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        breadcrumb = findViewById(R.id.breadcrumb);
+        breadcrumb.setOnClickListener(v -> navigateBack());
+
         findViewById(R.id.btn_settings).setOnClickListener(v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
 
@@ -57,18 +67,16 @@ public class MainActivity extends Activity {
         Button addLevelBtn = findViewById(R.id.btn_add_level);
         addLevelBtn.setOnClickListener(v -> {
             int newLevel = getLevelCount();
-            pendingAddLevel = newLevel;
-            Intent i = new Intent(this, AppPickerActivity.class);
-            startActivityForResult(i, REQ_APP_PICK);
+            showAddChoiceDialog(newLevel);
         });
 
         loadItems();
         checkOverlayPermission();
     }
 
-    /** Returns the number of levels (0 if no items exist). */
+    /** Returns the number of levels within currentParentId (0 if no items). */
     private int getLevelCount() {
-        List<PieItem> all = dao.getAllItems();
+        List<PieItem> all = dao.getAllItemsByParent(currentParentId);
         int maxLevel = -1;
         for (PieItem item : all) {
             if (item.level > maxLevel) maxLevel = item.level;
@@ -102,19 +110,62 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showAddChoiceDialog(int level) {
+        new AlertDialog.Builder(this)
+                .setTitle("Add to Level " + (level + 1))
+                .setItems(new String[]{"Add App", "Add Folder"}, (d, which) -> {
+                    if (which == 0) {
+                        pendingAddLevel = level;
+                        Intent i = new Intent(this, AppPickerActivity.class);
+                        startActivityForResult(i, REQ_APP_PICK);
+                    } else {
+                        showAddFolderDialog(level);
+                    }
+                })
+                .show();
+    }
+
+    private void showAddFolderDialog(int level) {
+        EditText input = new EditText(this);
+        input.setHint("Folder name");
+        new AlertDialog.Builder(this)
+                .setTitle("New Folder")
+                .setView(input)
+                .setPositiveButton("Create", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    List<PieItem> existing = dao.getItemsByLevelAndParent(level, currentParentId);
+                    PieItem item = new PieItem();
+                    item.level = level;
+                    item.position = existing.size();
+                    item.name = name;
+                    item.isFolder = true;
+                    item.parentId = currentParentId;
+                    dao.insert(item);
+                    loadItems();
+                    notifyServiceReload();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void addAppToLevel(Intent data, int level) {
         if (level < 0) return;
         String name = data.getStringExtra(AppPickerActivity.EXTRA_APP_NAME);
         String pkg = data.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME);
         String act = data.getStringExtra(AppPickerActivity.EXTRA_ACTIVITY_NAME);
 
-        List<PieItem> existing = dao.getItemsByLevel(level);
+        List<PieItem> existing = dao.getItemsByLevelAndParent(level, currentParentId);
         PieItem item = new PieItem();
         item.level = level;
         item.position = existing.size();
         item.name = name;
         item.packageName = pkg;
         item.activityName = act;
+        item.parentId = currentParentId;
         dao.insert(item);
         loadItems();
         notifyServiceReload();
@@ -145,7 +196,7 @@ public class MainActivity extends Activity {
         int levelCount = getLevelCount();
         List<Object> rows = new ArrayList<>();
         for (int level = 0; level < levelCount; level++) {
-            List<PieItem> levelItems = dao.getItemsByLevel(level);
+            List<PieItem> levelItems = dao.getItemsByLevelAndParent(level, currentParentId);
             rows.add(new LevelHeader(level, levelItems.size()));
             rows.addAll(levelItems);
         }
@@ -155,18 +206,74 @@ public class MainActivity extends Activity {
         } else {
             adapter.updateRows(rows);
         }
+        updateBreadcrumb();
+    }
+
+    private void updateBreadcrumb() {
+        if (currentParentId == 0) {
+            breadcrumb.setVisibility(View.GONE);
+        } else {
+            breadcrumb.setVisibility(View.VISIBLE);
+            StringBuilder sb = new StringBuilder("< Root");
+            for (String name : parentNames) {
+                sb.append(" > ").append(name);
+            }
+            breadcrumb.setText(sb.toString());
+        }
+    }
+
+    private void navigateIntoFolder(PieItem folder) {
+        parentStack.add(currentParentId);
+        parentNames.add(folder.name);
+        currentParentId = folder.id;
+        adapter = null;
+        loadItems();
+    }
+
+    private void navigateBack() {
+        if (parentStack.isEmpty()) return;
+        currentParentId = parentStack.remove(parentStack.size() - 1);
+        parentNames.remove(parentNames.size() - 1);
+        adapter = null;
+        loadItems();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (!parentStack.isEmpty()) {
+            navigateBack();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     private void deleteItemAndCompact(PieItem item) {
         int level = item.level;
         int pos = item.position;
+        int parent = item.parentId;
+
+        // If it's a folder, delete all children first
+        if (item.isFolder) {
+            deleteFolderContentsRecursive(item.id);
+        }
+
         dao.deleteById(item.id);
-        dao.compactPositions(level, pos);
+        dao.compactPositions(level, pos, parent);
 
         // If level is now empty, compact levels above it down
-        if (dao.getItemsByLevel(level).isEmpty()) {
-            dao.compactLevels(level);
+        if (dao.getItemsByLevelAndParent(level, parent).isEmpty()) {
+            dao.compactLevels(level, parent);
         }
+    }
+
+    private void deleteFolderContentsRecursive(int folderId) {
+        List<PieItem> children = dao.getAllItemsByParent(folderId);
+        for (PieItem child : children) {
+            if (child.isFolder) {
+                deleteFolderContentsRecursive(child.id);
+            }
+        }
+        dao.deleteByParentId(folderId);
     }
 
     private void swapPositions(PieItem a, PieItem b) {
@@ -181,7 +288,7 @@ public class MainActivity extends Activity {
 
     private void moveUp(PieItem item) {
         if (item.position <= 0) return;
-        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
         for (PieItem sib : siblings) {
             if (sib.position == item.position - 1) {
                 swapPositions(item, sib);
@@ -191,7 +298,7 @@ public class MainActivity extends Activity {
     }
 
     private void moveDown(PieItem item) {
-        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
         for (PieItem sib : siblings) {
             if (sib.position == item.position + 1) {
                 swapPositions(item, sib);
@@ -201,7 +308,15 @@ public class MainActivity extends Activity {
     }
 
     private void showEditDialog(PieItem item) {
-        List<PieItem> siblings = dao.getItemsByLevel(item.level);
+        if (item.isFolder) {
+            showFolderEditDialog(item);
+        } else {
+            showAppEditDialog(item);
+        }
+    }
+
+    private void showAppEditDialog(PieItem item) {
+        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
         boolean canUp = item.position > 0;
         boolean canDown = item.position < siblings.size() - 1;
 
@@ -236,6 +351,60 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private void showFolderEditDialog(PieItem item) {
+        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
+        boolean canUp = item.position > 0;
+        boolean canDown = item.position < siblings.size() - 1;
+
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+
+        if (canUp) {
+            options.add("Move Up");
+            actions.add(() -> moveUp(item));
+        }
+        if (canDown) {
+            options.add("Move Down");
+            actions.add(() -> moveDown(item));
+        }
+
+        options.add("Move to Level...");
+        actions.add(() -> showMoveLevelDialog(item));
+
+        options.add("Rename");
+        actions.add(() -> showRenameFolderDialog(item));
+
+        options.add("Delete");
+        actions.add(() -> showDeleteConfirmation(item));
+
+        new AlertDialog.Builder(this)
+                .setTitle(item.name)
+                .setItems(options.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .show();
+    }
+
+    private void showRenameFolderDialog(PieItem item) {
+        EditText input = new EditText(this);
+        input.setText(item.name);
+        input.selectAll();
+        new AlertDialog.Builder(this)
+                .setTitle("Rename Folder")
+                .setView(input)
+                .setPositiveButton("Rename", (d, w) -> {
+                    String name = input.getText().toString().trim();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    item.name = name;
+                    dao.update(item);
+                    loadItems();
+                    notifyServiceReload();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void showMoveLevelDialog(PieItem item) {
         int levelCount = getLevelCount();
         List<String> labels = new ArrayList<>();
@@ -243,12 +412,12 @@ public class MainActivity extends Activity {
 
         for (int i = 0; i < levelCount; i++) {
             if (i != item.level) {
-                int count = dao.getItemsByLevel(i).size();
-                labels.add("Level " + (i + 1) + " (" + count + " apps)");
+                int count = dao.getItemsByLevelAndParent(i, currentParentId).size();
+                labels.add("Level " + (i + 1) + " (" + count + " items)");
                 levelIndices.add(i);
             }
         }
-        // Offer creating a new level (only if it would actually be new)
+        // Offer creating a new level
         labels.add("New Level " + (levelCount + 1));
         levelIndices.add(levelCount);
 
@@ -258,29 +427,46 @@ public class MainActivity extends Activity {
                     int oldLevel = item.level;
                     int oldPos = item.position;
                     int newLevel = levelIndices.get(which);
+                    int parentId = item.parentId;
 
                     // Remove from old level and compact positions
                     dao.deleteById(item.id);
-                    dao.compactPositions(oldLevel, oldPos);
+                    dao.compactPositions(oldLevel, oldPos, parentId);
 
-                    // If old level is now empty and the new level is above it,
-                    // compact levels first so indices stay consistent
-                    boolean oldLevelEmpty = dao.getItemsByLevel(oldLevel).isEmpty();
+                    // If old level is now empty, compact levels
+                    boolean oldLevelEmpty = dao.getItemsByLevelAndParent(oldLevel, parentId).isEmpty();
                     if (oldLevelEmpty) {
-                        dao.compactLevels(oldLevel);
-                        // Adjust newLevel if it was above the removed level
+                        dao.compactLevels(oldLevel, parentId);
                         if (newLevel > oldLevel) newLevel--;
                     }
 
                     // Add to new level at end
-                    List<PieItem> newLevelItems = dao.getItemsByLevel(newLevel);
+                    List<PieItem> newLevelItems = dao.getItemsByLevelAndParent(newLevel, parentId);
                     PieItem moved = new PieItem();
                     moved.level = newLevel;
                     moved.position = newLevelItems.size();
                     moved.name = item.name;
                     moved.packageName = item.packageName;
                     moved.activityName = item.activityName;
+                    moved.parentId = item.parentId;
+                    moved.isFolder = item.isFolder;
                     dao.insert(moved);
+
+                    // If it was a folder, update children's parentId to the new id
+                    if (item.isFolder) {
+                        // Children reference the old id; we need to update them to the new item's id
+                        // Since we just inserted, get the new id
+                        List<PieItem> allItems = dao.getAllItems();
+                        int newId = -1;
+                        for (PieItem pi : allItems) {
+                            if (pi.id > newId) newId = pi.id;
+                        }
+                        List<PieItem> children = dao.getAllItemsByParent(item.id);
+                        for (PieItem child : children) {
+                            child.parentId = newId;
+                            dao.update(child);
+                        }
+                    }
 
                     loadItems();
                     notifyServiceReload();
@@ -289,8 +475,14 @@ public class MainActivity extends Activity {
     }
 
     private void showDeleteConfirmation(PieItem item) {
+        String message = item.isFolder
+                ? "Delete folder \"" + item.name + "\" and all its contents?"
+                : "Remove " + item.name + "?";
+        String title = item.isFolder ? "Delete Folder" : "Remove " + item.name + "?";
+
         new AlertDialog.Builder(this)
-                .setTitle("Remove " + item.name + "?")
+                .setTitle(title)
+                .setMessage(item.isFolder ? message : null)
                 .setPositiveButton("Remove", (d, w) -> {
                     deleteItemAndCompact(item);
                     loadItems();
@@ -361,25 +553,27 @@ public class MainActivity extends Activity {
                 LevelHeader header = (LevelHeader) rows.get(position);
                 HeaderVH hv = (HeaderVH) holder;
                 hv.label.setText("Level " + (header.level + 1)
-                        + " (" + header.count + " apps)");
-                hv.addBtn.setOnClickListener(v -> {
-                    pendingAddLevel = header.level;
-                    Intent i = new Intent(MainActivity.this, AppPickerActivity.class);
-                    startActivityForResult(i, REQ_APP_PICK);
-                });
+                        + " (" + header.count + " items)");
+                hv.addBtn.setOnClickListener(v -> showAddChoiceDialog(header.level));
             } else {
                 PieItem item = (PieItem) rows.get(position);
                 ItemVH iv = (ItemVH) holder;
                 iv.name.setText(item.name);
-                iv.info.setText("Slot " + (item.position + 1));
-                try {
-                    iv.icon.setImageDrawable(
-                            getPackageManager().getApplicationIcon(item.packageName));
-                } catch (Exception e) {
-                    iv.icon.setImageResource(android.R.drawable.sym_def_app_icon);
+
+                if (item.isFolder) {
+                    iv.info.setText("Folder");
+                    iv.icon.setImageResource(android.R.drawable.ic_menu_agenda);
+                } else {
+                    iv.info.setText("Slot " + (item.position + 1));
+                    try {
+                        iv.icon.setImageDrawable(
+                                getPackageManager().getApplicationIcon(item.packageName));
+                    } catch (Exception e) {
+                        iv.icon.setImageResource(android.R.drawable.sym_def_app_icon);
+                    }
                 }
 
-                List<PieItem> siblings = dao.getItemsByLevel(item.level);
+                List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
                 boolean isFirst = item.position <= 0;
                 boolean isLast = item.position >= siblings.size() - 1;
                 iv.btnUp.setVisibility(isFirst ? View.INVISIBLE : View.VISIBLE);
@@ -387,7 +581,17 @@ public class MainActivity extends Activity {
 
                 iv.btnUp.setOnClickListener(v -> moveUp(item));
                 iv.btnDown.setOnClickListener(v -> moveDown(item));
-                iv.itemView.setOnClickListener(v -> showEditDialog(item));
+                iv.itemView.setOnClickListener(v -> {
+                    if (item.isFolder) {
+                        navigateIntoFolder(item);
+                    } else {
+                        showEditDialog(item);
+                    }
+                });
+                iv.itemView.setOnLongClickListener(v -> {
+                    showEditDialog(item);
+                    return true;
+                });
             }
         }
 

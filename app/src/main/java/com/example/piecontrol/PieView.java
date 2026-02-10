@@ -16,6 +16,7 @@ import android.view.View;
 
 import com.example.piecontrol.data.AppDatabase;
 import com.example.piecontrol.data.PieItem;
+import com.example.piecontrol.data.PieItemDao;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,8 @@ public class PieView extends View {
     private final Paint slicePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint folderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint backPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path slicePath = new Path();
     private final RectF outerRect = new RectF();
     private final RectF innerRect = new RectF();
@@ -49,9 +52,14 @@ public class PieView extends View {
 
     private int highlightRing = -1;
     private int highlightSlot = -1;
+    private boolean highlightCenter = false;
 
     private final Vibrator vibrator;
     private OnItemSelectedListener listener;
+
+    // Folder navigation state
+    private int currentParentId = 0;
+    private final List<Integer> parentStack = new ArrayList<>();
 
     public interface OnItemSelectedListener {
         void onItemSelected(PieItem item);
@@ -65,6 +73,12 @@ public class PieView extends View {
         textPaint.setTextSize(10 * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
         strokePaint.setStyle(Paint.Style.STROKE);
+        folderPaint.setColor(0xFFFFCC00);
+        folderPaint.setStyle(Paint.Style.FILL);
+        backPaint.setColor(Color.WHITE);
+        backPaint.setStyle(Paint.Style.FILL);
+        backPaint.setStrokeWidth(3 * density);
+        backPaint.setStrokeCap(Paint.Cap.ROUND);
         vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
         loadConfig();
     }
@@ -104,8 +118,8 @@ public class PieView extends View {
     }
 
     private void loadItems() {
-        AppDatabase db = AppDatabase.getInstance(getContext());
-        List<PieItem> all = db.pieItemDao().getAllItems();
+        PieItemDao dao = AppDatabase.getInstance(getContext()).pieItemDao();
+        List<PieItem> all = dao.getAllItemsByParent(currentParentId);
 
         int maxLevel = -1;
         for (PieItem item : all) {
@@ -116,7 +130,7 @@ public class PieView extends View {
         itemsByLevel = new ArrayList<>();
         slotsPerRing = new int[ringCount];
         for (int i = 0; i < ringCount; i++) {
-            List<PieItem> levelItems = db.pieItemDao().getItemsByLevel(i);
+            List<PieItem> levelItems = dao.getItemsByLevelAndParent(i, currentParentId);
             itemsByLevel.add(levelItems);
             slotsPerRing[i] = levelItems.size();
         }
@@ -138,6 +152,11 @@ public class PieView extends View {
 
         float ringWidth = ringWidthDp * density;
         float innerRadius = innerRadiusDp * density;
+
+        // Draw back button in center area when in a sub-pie
+        if (!parentStack.isEmpty()) {
+            drawBackButton(canvas, innerRadius);
+        }
 
         for (int ring = 0; ring < ringCount; ring++) {
             int slots = slotsPerRing[ring];
@@ -174,21 +193,66 @@ public class PieView extends View {
 
                 PieItem item = (items != null && slot < items.size()) ? items.get(slot) : null;
                 if (item != null) {
-                    Drawable icon = loadIcon(item);
-                    if (icon != null) {
-                        int iconSize = (int) (iconSizeDp * density);
-                        int half = iconSize / 2;
-                        icon.setBounds((int) ix - half, (int) iy - half,
-                                       (int) ix + half, (int) iy + half);
-                        icon.draw(canvas);
+                    if (item.isFolder) {
+                        drawFolderIcon(canvas, ix, iy);
+                        // Draw folder name below icon
+                        if (item.name != null) {
+                            textPaint.setTextSize(8 * density);
+                            canvas.drawText(item.name, ix, iy + iconSizeDp * density * 0.45f, textPaint);
+                            textPaint.setTextSize(10 * density);
+                        }
                     } else {
-                        canvas.drawText(item.name != null ? item.name : "?", ix, iy + 4 * density, textPaint);
+                        Drawable icon = loadIcon(item);
+                        if (icon != null) {
+                            int iconSize = (int) (iconSizeDp * density);
+                            int half = iconSize / 2;
+                            icon.setBounds((int) ix - half, (int) iy - half,
+                                           (int) ix + half, (int) iy + half);
+                            icon.draw(canvas);
+                        } else {
+                            canvas.drawText(item.name != null ? item.name : "?", ix, iy + 4 * density, textPaint);
+                        }
                     }
                 }
             }
         }
 
         canvas.restore();
+    }
+
+    private void drawFolderIcon(Canvas canvas, float cx, float cy) {
+        float s = iconSizeDp * density * 0.35f;
+        // Folder body
+        RectF body = new RectF(cx - s, cy - s * 0.5f, cx + s, cy + s * 0.7f);
+        folderPaint.setColor(0xFFFFCC00);
+        canvas.drawRoundRect(body, 3 * density, 3 * density, folderPaint);
+        // Folder tab
+        RectF tab = new RectF(cx - s, cy - s * 0.8f, cx - s * 0.2f, cy - s * 0.4f);
+        canvas.drawRoundRect(tab, 2 * density, 2 * density, folderPaint);
+    }
+
+    private void drawBackButton(Canvas canvas, float innerRadius) {
+        // Draw a semi-circle background in the center
+        float r = innerRadius * 0.8f;
+        slicePaint.setColor(highlightCenter ? colorHighlight : 0xAA444444);
+        RectF oval = new RectF(centerX - r, centerY - r, centerX + r, centerY + r);
+        canvas.drawArc(oval, -totalAngle / 2f, totalAngle, true, slicePaint);
+        canvas.drawArc(oval, -totalAngle / 2f, totalAngle, true, strokePaint);
+
+        // Draw back arrow
+        float arrowSize = 12 * density;
+        float ax = centerX + r * 0.35f;
+        float ay = centerY;
+        backPaint.setStyle(Paint.Style.STROKE);
+        Path arrow = new Path();
+        arrow.moveTo(ax, ay);
+        arrow.lineTo(ax - arrowSize, ay);
+        arrow.moveTo(ax - arrowSize, ay);
+        arrow.lineTo(ax - arrowSize * 0.5f, ay - arrowSize * 0.5f);
+        arrow.moveTo(ax - arrowSize, ay);
+        arrow.lineTo(ax - arrowSize * 0.5f, ay + arrowSize * 0.5f);
+        canvas.drawPath(arrow, backPaint);
+        backPaint.setStyle(Paint.Style.FILL);
     }
 
     private Drawable loadIcon(PieItem item) {
@@ -211,12 +275,16 @@ public class PieView extends View {
                 int[] hit = hitTest(tx, ty);
                 int newRing = hit != null ? hit[0] : -1;
                 int newSlot = hit != null ? hit[1] : -1;
-                if (newRing != highlightRing || newSlot != highlightSlot) {
+                boolean newCenter = isInCenter(tx, ty);
+
+                if (newRing != highlightRing || newSlot != highlightSlot || newCenter != highlightCenter) {
+                    boolean changed = (newRing >= 0 && (newRing != highlightRing || newSlot != highlightSlot))
+                                   || (newCenter && !highlightCenter);
                     highlightRing = newRing;
                     highlightSlot = newSlot;
-                    if (newRing >= 0) {
-                        if (vibeTickAmplitude > 0)
-                            vibrator.vibrate(VibrationEffect.createOneShot(vibeTickDuration, vibeTickAmplitude));
+                    highlightCenter = newCenter && newRing < 0;
+                    if (changed && vibeTickAmplitude > 0) {
+                        vibrator.vibrate(VibrationEffect.createOneShot(vibeTickDuration, vibeTickAmplitude));
                     }
                     invalidate();
                 }
@@ -228,28 +296,65 @@ public class PieView extends View {
                             ? itemsByLevel.get(highlightRing) : null;
                     if (items != null && highlightSlot < items.size()) {
                         PieItem selected = items.get(highlightSlot);
-                        if (vibeSelectAmplitude > 0)
-                            vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
-                        if (listener != null) listener.onItemSelected(selected);
+                        if (selected.isFolder) {
+                            // Navigate into folder
+                            if (vibeSelectAmplitude > 0)
+                                vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+                            parentStack.add(currentParentId);
+                            currentParentId = selected.id;
+                            loadItems();
+                            highlightRing = -1;
+                            highlightSlot = -1;
+                            highlightCenter = false;
+                            invalidate();
+                        } else {
+                            if (vibeSelectAmplitude > 0)
+                                vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+                            if (listener != null) listener.onItemSelected(selected);
+                        }
                     } else {
                         if (listener != null) listener.onDismiss();
                     }
+                } else if (highlightCenter && !parentStack.isEmpty()) {
+                    // Go back to parent
+                    if (vibeSelectAmplitude > 0)
+                        vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+                    currentParentId = parentStack.remove(parentStack.size() - 1);
+                    loadItems();
+                    highlightRing = -1;
+                    highlightSlot = -1;
+                    highlightCenter = false;
+                    invalidate();
                 } else {
                     if (listener != null) listener.onDismiss();
                 }
                 highlightRing = -1;
                 highlightSlot = -1;
+                highlightCenter = false;
                 invalidate();
                 return true;
 
             case MotionEvent.ACTION_CANCEL:
                 highlightRing = -1;
                 highlightSlot = -1;
+                highlightCenter = false;
                 invalidate();
                 if (listener != null) listener.onDismiss();
                 return true;
         }
         return false;
+    }
+
+    private boolean isInCenter(float tx, float ty) {
+        if (parentStack.isEmpty()) return false;
+        float dx = tx - centerX;
+        float dy = ty - centerY;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy);
+        float innerRadius = innerRadiusDp * density;
+        if (dist >= innerRadius) return false;
+        // Check angle is within arc span
+        float angle = (float) Math.toDegrees(Math.atan2(dy, dx));
+        return angle >= -totalAngle / 2f && angle <= totalAngle / 2f;
     }
 
     private int[] hitTest(float tx, float ty) {

@@ -29,6 +29,16 @@
             style="?android:attr/borderlessButtonStyle" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/breadcrumb"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Root"
+        android:textSize="14sp"
+        android:textColor="#5588CC"
+        android:paddingBottom="8dp"
+        android:visibility="gone" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/items_list"
         android:layout_width="match_parent"

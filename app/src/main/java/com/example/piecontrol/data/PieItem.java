@@ -1,5 +1,6 @@
 package com.example.piecontrol.data;
 
+import androidx.room.ColumnInfo;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
 
@@ -13,4 +14,10 @@ public class PieItem {
     public String name;
     public String packageName;
     public String activityName;
+
+    @ColumnInfo(defaultValue = "0")
+    public int parentId;
+
+    @ColumnInfo(defaultValue = "0")
+    public boolean isFolder;
 }
