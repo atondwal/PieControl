@@ -11,48 +11,7 @@
         android:text="Pie Control"
         android:textSize="24sp"
         android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginBottom="8dp">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Rings: "
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/ring_count"
-            android:layout_width="60dp"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:text="2" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="  Slots: "
-            android:textSize="16sp" />
-
-        <EditText
-            android:id="@+id/slots_config"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:inputType="text"
-            android:hint="3,5" />
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/btn_apply_config"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="16dp"
-        android:text="Apply Config" />
+        android:layout_marginBottom="12dp" />
 
     <TextView
         android:id="@+id/vibe_tick_label"
@@ -82,17 +41,17 @@
         android:max="255"
         android:layout_marginBottom="12dp" />
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Configured Apps (tap item to edit):"
-        android:textSize="14sp"
-        android:layout_marginBottom="8dp" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/items_list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
+
+    <Button
+        android:id="@+id/btn_add_level"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="+ Add Level" />
 
 </LinearLayout>

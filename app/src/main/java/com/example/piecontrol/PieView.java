@@ -74,11 +74,6 @@ public class PieView extends View {
 
     private void loadConfig() {
         SharedPreferences prefs = getContext().getSharedPreferences("pie_config", Context.MODE_PRIVATE);
-        ringCount = prefs.getInt("ring_count", 2);
-        slotsPerRing = new int[ringCount];
-        for (int i = 0; i < ringCount; i++) {
-            slotsPerRing[i] = prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5);
-        }
         vibeTickAmplitude = prefs.getInt("vibe_tick", 60);
         vibeSelectAmplitude = prefs.getInt("vibe_select", 120);
         loadItems();
@@ -91,9 +86,20 @@ public class PieView extends View {
 
     private void loadItems() {
         AppDatabase db = AppDatabase.getInstance(getContext());
+        List<PieItem> all = db.pieItemDao().getAllItems();
+
+        int maxLevel = -1;
+        for (PieItem item : all) {
+            if (item.level > maxLevel) maxLevel = item.level;
+        }
+        ringCount = Math.max(0, maxLevel + 1);
+
         itemsByLevel = new ArrayList<>();
+        slotsPerRing = new int[ringCount];
         for (int i = 0; i < ringCount; i++) {
-            itemsByLevel.add(db.pieItemDao().getItemsByLevel(i));
+            List<PieItem> levelItems = db.pieItemDao().getItemsByLevel(i);
+            itemsByLevel.add(levelItems);
+            slotsPerRing[i] = levelItems.size();
         }
     }
 
@@ -115,9 +121,10 @@ public class PieView extends View {
         float innerRadius = INNER_RADIUS_DP * density;
 
         for (int ring = 0; ring < ringCount; ring++) {
+            int slots = slotsPerRing[ring];
+            if (slots == 0) continue;
             float rInner = innerRadius + ring * ringWidth;
             float rOuter = rInner + ringWidth;
-            int slots = slotsPerRing[ring];
             float totalAngle = 180f;
             float gapTotal = GAP_DEGREES * slots;
             float sweep = (totalAngle - gapTotal) / slots;
@@ -240,8 +247,8 @@ public class PieView extends View {
             float rInner = innerRadius + ring * ringWidth;
             float rOuter = rInner + ringWidth;
             if (dist >= rInner && dist < rOuter) {
-                // Check which slot
                 int slots = slotsPerRing[ring];
+                if (slots == 0) break;
                 float totalAngle = 180f;
                 float gapTotal = GAP_DEGREES * slots;
                 float sweep = (totalAngle - gapTotal) / slots;

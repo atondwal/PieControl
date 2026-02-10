@@ -30,4 +30,7 @@ public interface PieItemDao {
 
     @Query("UPDATE pie_items SET position = position - 1 WHERE level = :level AND position > :pos")
     void compactPositions(int level, int pos);
+
+    @Query("UPDATE pie_items SET level = level - 1 WHERE level > :removedLevel")
+    void compactLevels(int removedLevel);
 }

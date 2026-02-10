@@ -11,7 +11,6 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.SeekBar;
@@ -39,9 +38,6 @@ public class MainActivity extends Activity {
     private RecyclerView recyclerView;
     private SectionedAdapter adapter;
 
-    private EditText ringCountEdit;
-    private EditText slotsEdit;
-
     // For per-level add: which level the user tapped "+" on
     private int pendingAddLevel = -1;
     // For replace: which PieItem id is being replaced
@@ -55,21 +51,8 @@ public class MainActivity extends Activity {
         dao = AppDatabase.getInstance(this).pieItemDao();
         prefs = getSharedPreferences("pie_config", MODE_PRIVATE);
 
-        ringCountEdit = findViewById(R.id.ring_count);
-        slotsEdit = findViewById(R.id.slots_config);
-        Button applyBtn = findViewById(R.id.btn_apply_config);
         recyclerView = findViewById(R.id.items_list);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-
-        // Load config
-        int ringCount = prefs.getInt("ring_count", 2);
-        ringCountEdit.setText(String.valueOf(ringCount));
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < ringCount; i++) {
-            if (i > 0) sb.append(",");
-            sb.append(prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5));
-        }
-        slotsEdit.setText(sb.toString());
 
         // Vibration sliders
         SeekBar vibeTickSeek = findViewById(R.id.vibe_tick_seek);
@@ -107,10 +90,27 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar sb) {}
         });
 
-        applyBtn.setOnClickListener(v -> applyConfig());
+        // Add Level button
+        Button addLevelBtn = findViewById(R.id.btn_add_level);
+        addLevelBtn.setOnClickListener(v -> {
+            int newLevel = getLevelCount();
+            pendingAddLevel = newLevel;
+            Intent i = new Intent(this, AppPickerActivity.class);
+            startActivityForResult(i, REQ_APP_PICK);
+        });
 
         loadItems();
         checkOverlayPermission();
+    }
+
+    /** Returns the number of levels (0 if no items exist). */
+    private int getLevelCount() {
+        List<PieItem> all = dao.getAllItems();
+        int maxLevel = -1;
+        for (PieItem item : all) {
+            if (item.level > maxLevel) maxLevel = item.level;
+        }
+        return maxLevel + 1;
     }
 
     private void checkOverlayPermission() {
@@ -163,7 +163,6 @@ public class MainActivity extends Activity {
         String pkg = data.getStringExtra(AppPickerActivity.EXTRA_PACKAGE_NAME);
         String act = data.getStringExtra(AppPickerActivity.EXTRA_ACTIVITY_NAME);
 
-        // Find the item and update it
         List<PieItem> all = dao.getAllItems();
         for (PieItem item : all) {
             if (item.id == pendingReplaceItemId) {
@@ -179,37 +178,12 @@ public class MainActivity extends Activity {
         notifyServiceReload();
     }
 
-    private void applyConfig() {
-        try {
-            int ringCount = Integer.parseInt(ringCountEdit.getText().toString().trim());
-            String[] parts = slotsEdit.getText().toString().trim().split(",");
-            if (ringCount < 1 || ringCount > 5) {
-                Toast.makeText(this, "Ring count must be 1-5", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            SharedPreferences.Editor editor = prefs.edit();
-            editor.putInt("ring_count", ringCount);
-            for (int i = 0; i < ringCount; i++) {
-                int slots = (i < parts.length) ? Integer.parseInt(parts[i].trim()) : 3;
-                editor.putInt("slots_ring_" + i, Math.max(1, Math.min(12, slots)));
-            }
-            editor.apply();
-            Toast.makeText(this, "Config saved", Toast.LENGTH_SHORT).show();
-            loadItems(); // rebuild sections in case ring count changed
-            notifyServiceReload();
-        } catch (NumberFormatException e) {
-            Toast.makeText(this, "Invalid input", Toast.LENGTH_SHORT).show();
-        }
-    }
-
     private void loadItems() {
-        int ringCount = prefs.getInt("ring_count", 2);
+        int levelCount = getLevelCount();
         List<Object> rows = new ArrayList<>();
-        for (int level = 0; level < ringCount; level++) {
+        for (int level = 0; level < levelCount; level++) {
             List<PieItem> levelItems = dao.getItemsByLevel(level);
-            int maxSlots = prefs.getInt("slots_ring_" + level, level == 0 ? 3 : 5);
-            rows.add(new LevelHeader(level, levelItems.size(), maxSlots));
+            rows.add(new LevelHeader(level, levelItems.size()));
             rows.addAll(levelItems);
         }
         if (adapter == null) {
@@ -217,6 +191,18 @@ public class MainActivity extends Activity {
             recyclerView.setAdapter(adapter);
         } else {
             adapter.updateRows(rows);
+        }
+    }
+
+    private void deleteItemAndCompact(PieItem item) {
+        int level = item.level;
+        int pos = item.position;
+        dao.deleteById(item.id);
+        dao.compactPositions(level, pos);
+
+        // If level is now empty, compact levels above it down
+        if (dao.getItemsByLevel(level).isEmpty()) {
+            dao.compactLevels(level);
         }
     }
 
@@ -268,11 +254,8 @@ public class MainActivity extends Activity {
             actions.add(() -> moveDown(item));
         }
 
-        int ringCount = prefs.getInt("ring_count", 2);
-        if (ringCount > 1) {
-            options.add("Move to Level...");
-            actions.add(() -> showMoveLevelDialog(item));
-        }
+        options.add("Move to Level...");
+        actions.add(() -> showMoveLevelDialog(item));
 
         options.add("Replace App");
         actions.add(() -> {
@@ -291,28 +274,40 @@ public class MainActivity extends Activity {
     }
 
     private void showMoveLevelDialog(PieItem item) {
-        int ringCount = prefs.getInt("ring_count", 2);
-        List<String> levels = new ArrayList<>();
+        int levelCount = getLevelCount();
+        List<String> labels = new ArrayList<>();
         List<Integer> levelIndices = new ArrayList<>();
-        for (int i = 0; i < ringCount; i++) {
+
+        for (int i = 0; i < levelCount; i++) {
             if (i != item.level) {
                 int count = dao.getItemsByLevel(i).size();
-                int max = prefs.getInt("slots_ring_" + i, i == 0 ? 3 : 5);
-                levels.add("Level " + (i + 1) + " (" + count + "/" + max + " slots)");
+                labels.add("Level " + (i + 1) + " (" + count + " apps)");
                 levelIndices.add(i);
             }
         }
+        // Offer creating a new level (only if it would actually be new)
+        labels.add("New Level " + (levelCount + 1));
+        levelIndices.add(levelCount);
 
         new AlertDialog.Builder(this)
                 .setTitle("Move to which level?")
-                .setItems(levels.toArray(new String[0]), (d, which) -> {
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
                     int oldLevel = item.level;
                     int oldPos = item.position;
                     int newLevel = levelIndices.get(which);
 
-                    // Remove from old level and compact
+                    // Remove from old level and compact positions
                     dao.deleteById(item.id);
                     dao.compactPositions(oldLevel, oldPos);
+
+                    // If old level is now empty and the new level is above it,
+                    // compact levels first so indices stay consistent
+                    boolean oldLevelEmpty = dao.getItemsByLevel(oldLevel).isEmpty();
+                    if (oldLevelEmpty) {
+                        dao.compactLevels(oldLevel);
+                        // Adjust newLevel if it was above the removed level
+                        if (newLevel > oldLevel) newLevel--;
+                    }
 
                     // Add to new level at end
                     List<PieItem> newLevelItems = dao.getItemsByLevel(newLevel);
@@ -334,10 +329,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Remove " + item.name + "?")
                 .setPositiveButton("Remove", (d, w) -> {
-                    int level = item.level;
-                    int pos = item.position;
-                    dao.deleteById(item.id);
-                    dao.compactPositions(level, pos);
+                    deleteItemAndCompact(item);
                     loadItems();
                     notifyServiceReload();
                 })
@@ -360,11 +352,9 @@ public class MainActivity extends Activity {
     static class LevelHeader {
         final int level;
         final int count;
-        final int maxSlots;
-        LevelHeader(int level, int count, int maxSlots) {
+        LevelHeader(int level, int count) {
             this.level = level;
             this.count = count;
-            this.maxSlots = maxSlots;
         }
     }
 
@@ -408,7 +398,7 @@ public class MainActivity extends Activity {
                 LevelHeader header = (LevelHeader) rows.get(position);
                 HeaderVH hv = (HeaderVH) holder;
                 hv.label.setText("Level " + (header.level + 1)
-                        + " (" + header.count + "/" + header.maxSlots + " slots)");
+                        + " (" + header.count + " apps)");
                 hv.addBtn.setOnClickListener(v -> {
                     pendingAddLevel = header.level;
                     Intent i = new Intent(MainActivity.this, AppPickerActivity.class);
@@ -426,7 +416,6 @@ public class MainActivity extends Activity {
                     iv.icon.setImageResource(android.R.drawable.sym_def_app_icon);
                 }
 
-                // Determine if this is first/last in its level
                 List<PieItem> siblings = dao.getItemsByLevel(item.level);
                 boolean isFirst = item.position <= 0;
                 boolean isLast = item.position >= siblings.size() - 1;
