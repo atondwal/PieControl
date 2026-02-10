@@ -5,13 +5,31 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.piecontrol.data.AppDatabase;
+import com.example.piecontrol.data.PieItem;
+import com.example.piecontrol.data.PieItemDao;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 
 public class SettingsActivity extends Activity {
+    private static final int REQ_EXPORT = 100;
+    private static final int REQ_IMPORT = 101;
+
     private SharedPreferences prefs;
 
     @Override
@@ -58,6 +76,19 @@ public class SettingsActivity extends Activity {
                 "vibe_tick_ms", 10, 1, "Tick duration: ", "ms");
         setupSlider(R.id.vibe_select_ms_seek, R.id.vibe_select_ms_label,
                 "vibe_select_ms", 20, 1, "Select duration: ", "ms");
+
+        // Backup
+        findViewById(R.id.btn_export).setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "pie_control_backup.json");
+            startActivityForResult(intent, REQ_EXPORT);
+        });
+        findViewById(R.id.btn_import).setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("application/json");
+            startActivityForResult(intent, REQ_IMPORT);
+        });
     }
 
     private void setupSlider(int seekId, int labelId, String prefKey,
@@ -170,6 +201,106 @@ public class SettingsActivity extends Activity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null) return;
+        Uri uri = data.getData();
+        if (uri == null) return;
+
+        if (requestCode == REQ_EXPORT) {
+            doExport(uri);
+        } else if (requestCode == REQ_IMPORT) {
+            doImport(uri);
+        }
+    }
+
+    private void doExport(Uri uri) {
+        try {
+            JSONObject root = new JSONObject();
+
+            // Export prefs
+            JSONObject prefsJson = new JSONObject();
+            Map<String, ?> all = prefs.getAll();
+            for (Map.Entry<String, ?> entry : all.entrySet()) {
+                prefsJson.put(entry.getKey(), entry.getValue());
+            }
+            root.put("prefs", prefsJson);
+
+            // Export pie items
+            PieItemDao dao = AppDatabase.getInstance(this).pieItemDao();
+            List<PieItem> items = dao.getAllItems();
+            JSONArray itemsArr = new JSONArray();
+            for (PieItem item : items) {
+                JSONObject obj = new JSONObject();
+                obj.put("level", item.level);
+                obj.put("position", item.position);
+                obj.put("name", item.name);
+                obj.put("packageName", item.packageName);
+                obj.put("activityName", item.activityName);
+                itemsArr.put(obj);
+            }
+            root.put("items", itemsArr);
+
+            OutputStream os = getContentResolver().openOutputStream(uri);
+            os.write(root.toString(2).getBytes(StandardCharsets.UTF_8));
+            os.close();
+            Toast.makeText(this, "Exported " + items.size() + " items", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void doImport(Uri uri) {
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            byte[] bytes = new byte[is.available()];
+            is.read(bytes);
+            is.close();
+
+            JSONObject root = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+
+            // Restore prefs
+            JSONObject prefsJson = root.getJSONObject("prefs");
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.clear();
+            for (java.util.Iterator<String> it = prefsJson.keys(); it.hasNext(); ) {
+                String key = it.next();
+                Object val = prefsJson.get(key);
+                if (val instanceof Integer) editor.putInt(key, (Integer) val);
+                else if (val instanceof Long) editor.putInt(key, ((Long) val).intValue());
+                else if (val instanceof String) editor.putString(key, (String) val);
+                else if (val instanceof Boolean) editor.putBoolean(key, (Boolean) val);
+                else if (val instanceof Number) editor.putInt(key, ((Number) val).intValue());
+            }
+            editor.apply();
+
+            // Restore pie items
+            PieItemDao dao = AppDatabase.getInstance(this).pieItemDao();
+            List<PieItem> existing = dao.getAllItems();
+            for (PieItem item : existing) dao.delete(item);
+
+            JSONArray itemsArr = root.getJSONArray("items");
+            int count = itemsArr.length();
+            for (int i = 0; i < count; i++) {
+                JSONObject obj = itemsArr.getJSONObject(i);
+                PieItem item = new PieItem();
+                item.level = obj.getInt("level");
+                item.position = obj.getInt("position");
+                item.name = obj.optString("name", null);
+                item.packageName = obj.optString("packageName", null);
+                item.activityName = obj.optString("activityName", null);
+                dao.insert(item);
+            }
+
+            Toast.makeText(this, "Imported " + count + " items", Toast.LENGTH_SHORT).show();
+            notifyServiceReload();
+            recreate();
+        } catch (Exception e) {
+            Toast.makeText(this, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void notifyServiceReload() {
