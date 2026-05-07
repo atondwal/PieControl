@@ -62,7 +62,7 @@ public class PieOverlayService extends Service {
 
     private void createNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "Pie Control Overlay", NotificationManager.IMPORTANCE_LOW);
+                CHANNEL_ID, getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW);
         channel.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
     }
@@ -72,8 +72,8 @@ public class PieOverlayService extends Service {
         PendingIntent pi = PendingIntent.getActivity(this, 0, openIntent,
                 PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Pie Control")
-                .setContentText("Swipe from left edge to open")
+                .setContentTitle(getString(R.string.notification_title))
+                .setContentText(getString(R.string.notification_text))
                 .setSmallIcon(android.R.drawable.ic_menu_compass)
                 .setContentIntent(pi)
                 .build();
@@ -91,12 +91,12 @@ public class PieOverlayService extends Service {
         triggerView = new TriggerZoneView(this);
         triggerView.setOnTriggerListener(this::showPie);
 
-        SharedPreferences prefs = getSharedPreferences("pie_config", MODE_PRIVATE);
+        SharedPreferences prefs = Prefs.get(this);
         float density = getResources().getDisplayMetrics().density;
 
-        int widthDp = prefs.getInt("trigger_width", 20);
-        int heightPct = prefs.getInt("trigger_height", 43);
-        int posPct = prefs.getInt("trigger_pos", 44);
+        int widthDp = prefs.getInt(Prefs.KEY_TRIGGER_WIDTH, Prefs.DEFAULT_TRIGGER_WIDTH);
+        int heightPct = prefs.getInt(Prefs.KEY_TRIGGER_HEIGHT, Prefs.DEFAULT_TRIGGER_HEIGHT);
+        int posPct = prefs.getInt(Prefs.KEY_TRIGGER_POS, Prefs.DEFAULT_TRIGGER_POS);
 
         int triggerWidthPx = (int) (widthDp * density);
 

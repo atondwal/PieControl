@@ -9,6 +9,8 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.MotionEvent;
@@ -55,11 +57,18 @@ public class PieView extends View {
     private boolean highlightCenter = false;
 
     private final Vibrator vibrator;
+    private final int folderIconColor;
+    private final int backButtonBgColor;
     private OnItemSelectedListener listener;
 
     // Folder navigation state
     private int currentParentId = 0;
     private final List<Integer> parentStack = new ArrayList<>();
+
+    // Dwell-to-activate for folders and back button
+    private static final long DWELL_MS = 400;
+    private final Handler dwellHandler = new Handler(Looper.getMainLooper());
+    private Runnable dwellRunnable;
 
     public interface OnItemSelectedListener {
         void onItemSelected(PieItem item);
@@ -73,7 +82,9 @@ public class PieView extends View {
         textPaint.setTextSize(10 * density);
         textPaint.setTextAlign(Paint.Align.CENTER);
         strokePaint.setStyle(Paint.Style.STROKE);
-        folderPaint.setColor(0xFFFFCC00);
+        folderIconColor = context.getResources().getColor(R.color.pie_folder_yellow, null);
+        backButtonBgColor = context.getResources().getColor(R.color.pie_back_button_bg, null);
+        folderPaint.setColor(folderIconColor);
         folderPaint.setStyle(Paint.Style.FILL);
         backPaint.setColor(Color.WHITE);
         backPaint.setStyle(Paint.Style.FILL);
@@ -92,20 +103,20 @@ public class PieView extends View {
     }
 
     private void loadConfig() {
-        SharedPreferences prefs = getContext().getSharedPreferences("pie_config", Context.MODE_PRIVATE);
-        vibeTickAmplitude = prefs.getInt("vibe_tick", 60);
-        vibeSelectAmplitude = prefs.getInt("vibe_select", 120);
-        ringWidthDp = prefs.getInt("ring_width", 51);
-        innerRadiusDp = prefs.getInt("inner_radius", 60);
-        gapDegrees = prefs.getInt("gap_degrees", 0);
-        colorBg = prefs.getInt("color_bg", 0xDD333333);
-        colorHighlight = prefs.getInt("color_highlight", 0xDD5588CC);
-        colorStroke = prefs.getInt("color_stroke", 0xDD888888);
-        iconSizeDp = prefs.getInt("icon_size", 36);
-        strokeWidthDp = prefs.getInt("stroke_width_tenths", 15) / 10f;
-        vibeTickDuration = prefs.getInt("vibe_tick_ms", 10);
-        vibeSelectDuration = prefs.getInt("vibe_select_ms", 20);
-        totalAngle = prefs.getInt("arc_span", 180);
+        SharedPreferences prefs = Prefs.get(getContext());
+        vibeTickAmplitude = prefs.getInt(Prefs.KEY_VIBE_TICK, Prefs.DEFAULT_VIBE_TICK);
+        vibeSelectAmplitude = prefs.getInt(Prefs.KEY_VIBE_SELECT, Prefs.DEFAULT_VIBE_SELECT);
+        ringWidthDp = prefs.getInt(Prefs.KEY_RING_WIDTH, Prefs.DEFAULT_RING_WIDTH);
+        innerRadiusDp = prefs.getInt(Prefs.KEY_INNER_RADIUS, Prefs.DEFAULT_INNER_RADIUS);
+        gapDegrees = prefs.getInt(Prefs.KEY_GAP_DEGREES, Prefs.DEFAULT_GAP_DEGREES);
+        colorBg = prefs.getInt(Prefs.KEY_COLOR_BG, Prefs.DEFAULT_COLOR_BG);
+        colorHighlight = prefs.getInt(Prefs.KEY_COLOR_HIGHLIGHT, Prefs.DEFAULT_COLOR_HIGHLIGHT);
+        colorStroke = prefs.getInt(Prefs.KEY_COLOR_STROKE, Prefs.DEFAULT_COLOR_STROKE);
+        iconSizeDp = prefs.getInt(Prefs.KEY_ICON_SIZE, Prefs.DEFAULT_ICON_SIZE);
+        strokeWidthDp = prefs.getInt(Prefs.KEY_STROKE_WIDTH_TENTHS, Prefs.DEFAULT_STROKE_WIDTH_TENTHS) / 10f;
+        vibeTickDuration = prefs.getInt(Prefs.KEY_VIBE_TICK_MS, Prefs.DEFAULT_VIBE_TICK_MS);
+        vibeSelectDuration = prefs.getInt(Prefs.KEY_VIBE_SELECT_MS, Prefs.DEFAULT_VIBE_SELECT_MS);
+        totalAngle = prefs.getInt(Prefs.KEY_ARC_SPAN, Prefs.DEFAULT_ARC_SPAN);
 
         strokePaint.setStrokeWidth(strokeWidthDp * density);
         strokePaint.setColor(colorStroke);
@@ -224,7 +235,7 @@ public class PieView extends View {
         float s = iconSizeDp * density * 0.35f;
         // Folder body
         RectF body = new RectF(cx - s, cy - s * 0.5f, cx + s, cy + s * 0.7f);
-        folderPaint.setColor(0xFFFFCC00);
+        folderPaint.setColor(folderIconColor);
         canvas.drawRoundRect(body, 3 * density, 3 * density, folderPaint);
         // Folder tab
         RectF tab = new RectF(cx - s, cy - s * 0.8f, cx - s * 0.2f, cy - s * 0.4f);
@@ -234,7 +245,7 @@ public class PieView extends View {
     private void drawBackButton(Canvas canvas, float innerRadius) {
         // Draw a semi-circle background in the center
         float r = innerRadius * 0.8f;
-        slicePaint.setColor(highlightCenter ? colorHighlight : 0xAA444444);
+        slicePaint.setColor(highlightCenter ? colorHighlight : backButtonBgColor);
         RectF oval = new RectF(centerX - r, centerY - r, centerX + r, centerY + r);
         canvas.drawArc(oval, -totalAngle / 2f, totalAngle, true, slicePaint);
         canvas.drawArc(oval, -totalAngle / 2f, totalAngle, true, strokePaint);
@@ -264,6 +275,56 @@ public class PieView extends View {
         }
     }
 
+    private void navigateIntoFolder(PieItem folder) {
+        if (vibeSelectAmplitude > 0)
+            vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+        parentStack.add(currentParentId);
+        currentParentId = folder.id;
+        loadItems();
+        highlightRing = -1;
+        highlightSlot = -1;
+        highlightCenter = false;
+        invalidate();
+    }
+
+    private void navigateBack() {
+        if (parentStack.isEmpty()) return;
+        if (vibeSelectAmplitude > 0)
+            vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+        currentParentId = parentStack.remove(parentStack.size() - 1);
+        loadItems();
+        highlightRing = -1;
+        highlightSlot = -1;
+        highlightCenter = false;
+        invalidate();
+    }
+
+    private void cancelDwell() {
+        if (dwellRunnable != null) {
+            dwellHandler.removeCallbacks(dwellRunnable);
+            dwellRunnable = null;
+        }
+    }
+
+    private void startDwellTimer() {
+        cancelDwell();
+        // Check if current highlight is on a folder or back button
+        if (highlightCenter && !parentStack.isEmpty()) {
+            dwellRunnable = this::navigateBack;
+            dwellHandler.postDelayed(dwellRunnable, DWELL_MS);
+        } else if (highlightRing >= 0 && highlightSlot >= 0) {
+            List<PieItem> items = highlightRing < itemsByLevel.size()
+                    ? itemsByLevel.get(highlightRing) : null;
+            if (items != null && highlightSlot < items.size()) {
+                PieItem item = items.get(highlightSlot);
+                if (item.isFolder) {
+                    dwellRunnable = () -> navigateIntoFolder(item);
+                    dwellHandler.postDelayed(dwellRunnable, DWELL_MS);
+                }
+            }
+        }
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         float tx = event.getRawX();
@@ -287,26 +348,19 @@ public class PieView extends View {
                         vibrator.vibrate(VibrationEffect.createOneShot(vibeTickDuration, vibeTickAmplitude));
                     }
                     invalidate();
+                    startDwellTimer();
                 }
                 return true;
 
             case MotionEvent.ACTION_UP:
+                cancelDwell();
                 if (highlightRing >= 0 && highlightSlot >= 0) {
                     List<PieItem> items = highlightRing < itemsByLevel.size()
                             ? itemsByLevel.get(highlightRing) : null;
                     if (items != null && highlightSlot < items.size()) {
                         PieItem selected = items.get(highlightSlot);
                         if (selected.isFolder) {
-                            // Navigate into folder
-                            if (vibeSelectAmplitude > 0)
-                                vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
-                            parentStack.add(currentParentId);
-                            currentParentId = selected.id;
-                            loadItems();
-                            highlightRing = -1;
-                            highlightSlot = -1;
-                            highlightCenter = false;
-                            invalidate();
+                            navigateIntoFolder(selected);
                         } else {
                             if (vibeSelectAmplitude > 0)
                                 vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
@@ -316,15 +370,7 @@ public class PieView extends View {
                         if (listener != null) listener.onDismiss();
                     }
                 } else if (highlightCenter && !parentStack.isEmpty()) {
-                    // Go back to parent
-                    if (vibeSelectAmplitude > 0)
-                        vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
-                    currentParentId = parentStack.remove(parentStack.size() - 1);
-                    loadItems();
-                    highlightRing = -1;
-                    highlightSlot = -1;
-                    highlightCenter = false;
-                    invalidate();
+                    navigateBack();
                 } else {
                     if (listener != null) listener.onDismiss();
                 }
@@ -335,6 +381,7 @@ public class PieView extends View {
                 return true;
 
             case MotionEvent.ACTION_CANCEL:
+                cancelDwell();
                 highlightRing = -1;
                 highlightSlot = -1;
                 highlightCenter = false;

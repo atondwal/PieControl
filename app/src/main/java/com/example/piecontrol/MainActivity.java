@@ -6,17 +6,12 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.ImageButton;
-import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -101,7 +96,7 @@ public class MainActivity extends Activity {
             if (Settings.canDrawOverlays(this)) {
                 startOverlayService();
             } else {
-                Toast.makeText(this, "Overlay permission required", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.overlay_permission_required, Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQ_APP_PICK && resultCode == RESULT_OK && data != null) {
             addAppToLevel(data, pendingAddLevel);
@@ -113,7 +108,7 @@ public class MainActivity extends Activity {
     private void showAddChoiceDialog(int level) {
         new AlertDialog.Builder(this)
                 .setTitle("Add to Level " + (level + 1))
-                .setItems(new String[]{"Add App", "Add Folder"}, (d, which) -> {
+                .setItems(new String[]{getString(R.string.add_app), getString(R.string.add_folder)}, (d, which) -> {
                     if (which == 0) {
                         pendingAddLevel = level;
                         Intent i = new Intent(this, AppPickerActivity.class);
@@ -127,14 +122,14 @@ public class MainActivity extends Activity {
 
     private void showAddFolderDialog(int level) {
         EditText input = new EditText(this);
-        input.setHint("Folder name");
+        input.setHint(R.string.folder_name_hint);
         new AlertDialog.Builder(this)
-                .setTitle("New Folder")
+                .setTitle(R.string.new_folder)
                 .setView(input)
-                .setPositiveButton("Create", (d, w) -> {
+                .setPositiveButton(R.string.create, (d, w) -> {
                     String name = input.getText().toString().trim();
                     if (name.isEmpty()) {
-                        Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.name_cannot_be_empty, Toast.LENGTH_SHORT).show();
                         return;
                     }
                     List<PieItem> existing = dao.getItemsByLevelAndParent(level, currentParentId);
@@ -148,7 +143,7 @@ public class MainActivity extends Activity {
                     loadItems();
                     notifyServiceReload();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -201,13 +196,24 @@ public class MainActivity extends Activity {
             rows.addAll(levelItems);
         }
         if (adapter == null) {
-            adapter = new SectionedAdapter(rows);
+            adapter = new SectionedAdapter(rows, getPackageManager(), adapterListener);
             recyclerView.setAdapter(adapter);
         } else {
             adapter.updateRows(rows);
         }
         updateBreadcrumb();
     }
+
+    private final SectionedAdapter.Listener adapterListener = new SectionedAdapter.Listener() {
+        @Override public void onAddRequested(int level) { showAddChoiceDialog(level); }
+        @Override public void onMoveUp(PieItem item) { MainActivity.this.moveUp(item); }
+        @Override public void onMoveDown(PieItem item) { MainActivity.this.moveDown(item); }
+        @Override public void onItemClicked(PieItem item) {
+            if (item.isFolder) navigateIntoFolder(item);
+            else showEditDialog(item);
+        }
+        @Override public void onItemLongClicked(PieItem item) { showEditDialog(item); }
+    };
 
     private void updateBreadcrumb() {
         if (currentParentId == 0) {
@@ -308,73 +314,38 @@ public class MainActivity extends Activity {
     }
 
     private void showEditDialog(PieItem item) {
+        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
+        boolean canUp = item.position > 0;
+        boolean canDown = item.position < siblings.size() - 1;
+
+        List<String> options = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+
+        if (canUp) {
+            options.add(getString(R.string.move_up));
+            actions.add(() -> moveUp(item));
+        }
+        if (canDown) {
+            options.add(getString(R.string.move_down));
+            actions.add(() -> moveDown(item));
+        }
+
+        options.add(getString(R.string.move_to_level));
+        actions.add(() -> showMoveLevelDialog(item));
+
         if (item.isFolder) {
-            showFolderEditDialog(item);
+            options.add(getString(R.string.rename));
+            actions.add(() -> showRenameFolderDialog(item));
         } else {
-            showAppEditDialog(item);
-        }
-    }
-
-    private void showAppEditDialog(PieItem item) {
-        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
-        boolean canUp = item.position > 0;
-        boolean canDown = item.position < siblings.size() - 1;
-
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-
-        if (canUp) {
-            options.add("Move Up");
-            actions.add(() -> moveUp(item));
-        }
-        if (canDown) {
-            options.add("Move Down");
-            actions.add(() -> moveDown(item));
+            options.add(getString(R.string.replace_app));
+            actions.add(() -> {
+                pendingReplaceItemId = item.id;
+                Intent i = new Intent(this, AppPickerActivity.class);
+                startActivityForResult(i, REQ_APP_REPLACE);
+            });
         }
 
-        options.add("Move to Level...");
-        actions.add(() -> showMoveLevelDialog(item));
-
-        options.add("Replace App");
-        actions.add(() -> {
-            pendingReplaceItemId = item.id;
-            Intent i = new Intent(this, AppPickerActivity.class);
-            startActivityForResult(i, REQ_APP_REPLACE);
-        });
-
-        options.add("Delete");
-        actions.add(() -> showDeleteConfirmation(item));
-
-        new AlertDialog.Builder(this)
-                .setTitle(item.name)
-                .setItems(options.toArray(new String[0]), (d, which) -> actions.get(which).run())
-                .show();
-    }
-
-    private void showFolderEditDialog(PieItem item) {
-        List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
-        boolean canUp = item.position > 0;
-        boolean canDown = item.position < siblings.size() - 1;
-
-        List<String> options = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-
-        if (canUp) {
-            options.add("Move Up");
-            actions.add(() -> moveUp(item));
-        }
-        if (canDown) {
-            options.add("Move Down");
-            actions.add(() -> moveDown(item));
-        }
-
-        options.add("Move to Level...");
-        actions.add(() -> showMoveLevelDialog(item));
-
-        options.add("Rename");
-        actions.add(() -> showRenameFolderDialog(item));
-
-        options.add("Delete");
+        options.add(getString(R.string.delete));
         actions.add(() -> showDeleteConfirmation(item));
 
         new AlertDialog.Builder(this)
@@ -388,12 +359,12 @@ public class MainActivity extends Activity {
         input.setText(item.name);
         input.selectAll();
         new AlertDialog.Builder(this)
-                .setTitle("Rename Folder")
+                .setTitle(R.string.rename_folder)
                 .setView(input)
-                .setPositiveButton("Rename", (d, w) -> {
+                .setPositiveButton(R.string.rename, (d, w) -> {
                     String name = input.getText().toString().trim();
                     if (name.isEmpty()) {
-                        Toast.makeText(this, "Name cannot be empty", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.name_cannot_be_empty, Toast.LENGTH_SHORT).show();
                         return;
                     }
                     item.name = name;
@@ -401,7 +372,7 @@ public class MainActivity extends Activity {
                     loadItems();
                     notifyServiceReload();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -478,17 +449,17 @@ public class MainActivity extends Activity {
         String message = item.isFolder
                 ? "Delete folder \"" + item.name + "\" and all its contents?"
                 : "Remove " + item.name + "?";
-        String title = item.isFolder ? "Delete Folder" : "Remove " + item.name + "?";
+        String title = item.isFolder ? getString(R.string.delete_folder) : "Remove " + item.name + "?";
 
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(item.isFolder ? message : null)
-                .setPositiveButton("Remove", (d, w) -> {
+                .setPositiveButton(R.string.remove, (d, w) -> {
                     deleteItemAndCompact(item);
                     loadItems();
                     notifyServiceReload();
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -503,127 +474,4 @@ public class MainActivity extends Activity {
         startForegroundService(intent);
     }
 
-    // --- Data class for section headers ---
-    static class LevelHeader {
-        final int level;
-        final int count;
-        LevelHeader(int level, int count) {
-            this.level = level;
-            this.count = count;
-        }
-    }
-
-    // --- Sectioned adapter ---
-    private class SectionedAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
-        private static final int TYPE_HEADER = 0;
-        private static final int TYPE_ITEM = 1;
-        private final List<Object> rows;
-
-        SectionedAdapter(List<Object> rows) {
-            this.rows = new ArrayList<>(rows);
-        }
-
-        void updateRows(List<Object> newRows) {
-            rows.clear();
-            rows.addAll(newRows);
-            notifyDataSetChanged();
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return rows.get(position) instanceof LevelHeader ? TYPE_HEADER : TYPE_ITEM;
-        }
-
-        @NonNull
-        @Override
-        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            LayoutInflater inf = LayoutInflater.from(parent.getContext());
-            if (viewType == TYPE_HEADER) {
-                View v = inf.inflate(R.layout.item_level_header, parent, false);
-                return new HeaderVH(v);
-            } else {
-                View v = inf.inflate(R.layout.item_pie_slot, parent, false);
-                return new ItemVH(v);
-            }
-        }
-
-        @Override
-        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            if (holder instanceof HeaderVH) {
-                LevelHeader header = (LevelHeader) rows.get(position);
-                HeaderVH hv = (HeaderVH) holder;
-                hv.label.setText("Level " + (header.level + 1)
-                        + " (" + header.count + " items)");
-                hv.addBtn.setOnClickListener(v -> showAddChoiceDialog(header.level));
-            } else {
-                PieItem item = (PieItem) rows.get(position);
-                ItemVH iv = (ItemVH) holder;
-                iv.name.setText(item.name);
-
-                if (item.isFolder) {
-                    iv.info.setText("Folder");
-                    iv.icon.setImageResource(android.R.drawable.ic_menu_agenda);
-                } else {
-                    iv.info.setText("Slot " + (item.position + 1));
-                    try {
-                        iv.icon.setImageDrawable(
-                                getPackageManager().getApplicationIcon(item.packageName));
-                    } catch (Exception e) {
-                        iv.icon.setImageResource(android.R.drawable.sym_def_app_icon);
-                    }
-                }
-
-                List<PieItem> siblings = dao.getItemsByLevelAndParent(item.level, item.parentId);
-                boolean isFirst = item.position <= 0;
-                boolean isLast = item.position >= siblings.size() - 1;
-                iv.btnUp.setVisibility(isFirst ? View.INVISIBLE : View.VISIBLE);
-                iv.btnDown.setVisibility(isLast ? View.INVISIBLE : View.VISIBLE);
-
-                iv.btnUp.setOnClickListener(v -> moveUp(item));
-                iv.btnDown.setOnClickListener(v -> moveDown(item));
-                iv.itemView.setOnClickListener(v -> {
-                    if (item.isFolder) {
-                        navigateIntoFolder(item);
-                    } else {
-                        showEditDialog(item);
-                    }
-                });
-                iv.itemView.setOnLongClickListener(v -> {
-                    showEditDialog(item);
-                    return true;
-                });
-            }
-        }
-
-        @Override
-        public int getItemCount() {
-            return rows.size();
-        }
-
-        class HeaderVH extends RecyclerView.ViewHolder {
-            TextView label;
-            Button addBtn;
-            HeaderVH(View v) {
-                super(v);
-                label = v.findViewById(R.id.header_label);
-                addBtn = v.findViewById(R.id.header_add_btn);
-            }
-        }
-
-        class ItemVH extends RecyclerView.ViewHolder {
-            ImageView icon;
-            TextView name;
-            TextView info;
-            ImageButton btnUp;
-            ImageButton btnDown;
-            ItemVH(View v) {
-                super(v);
-                icon = v.findViewById(R.id.slot_icon);
-                name = v.findViewById(R.id.slot_name);
-                info = v.findViewById(R.id.slot_info);
-                btnUp = v.findViewById(R.id.btn_move_up);
-                btnDown = v.findViewById(R.id.btn_move_down);
-            }
-        }
-    }
 }

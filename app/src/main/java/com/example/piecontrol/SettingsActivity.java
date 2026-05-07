@@ -36,46 +36,46 @@ public class SettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
-        prefs = getSharedPreferences("pie_config", MODE_PRIVATE);
+        prefs = Prefs.get(this);
 
         // Appearance
         setupColorPicker(R.id.color_bg_preview, R.id.color_bg_label,
-                "color_bg", 0xDD333333, "Slice color");
+                Prefs.KEY_COLOR_BG, Prefs.DEFAULT_COLOR_BG, "Slice color");
         setupColorPicker(R.id.color_highlight_preview, R.id.color_highlight_label,
-                "color_highlight", 0xDD5588CC, "Highlight color");
+                Prefs.KEY_COLOR_HIGHLIGHT, Prefs.DEFAULT_COLOR_HIGHLIGHT, "Highlight color");
         setupColorPicker(R.id.color_stroke_preview, R.id.color_stroke_label,
-                "color_stroke", 0xDD888888, "Stroke color");
+                Prefs.KEY_COLOR_STROKE, Prefs.DEFAULT_COLOR_STROKE, "Stroke color");
         setupSlider(R.id.icon_size_seek, R.id.icon_size_label,
-                "icon_size", 36, 16, "Icon size: ", "dp");
+                Prefs.KEY_ICON_SIZE, Prefs.DEFAULT_ICON_SIZE, 16, "Icon size: ", "dp");
         setupStrokeWidthSlider();
 
         // Pie geometry
         setupSlider(R.id.ring_width_seek, R.id.ring_width_label,
-                "ring_width", 51, 20, "Ring width: ", "dp");
+                Prefs.KEY_RING_WIDTH, Prefs.DEFAULT_RING_WIDTH, 20, "Ring width: ", "dp");
         setupSlider(R.id.inner_radius_seek, R.id.inner_radius_label,
-                "inner_radius", 60, 0, "Inner radius: ", "dp");
+                Prefs.KEY_INNER_RADIUS, Prefs.DEFAULT_INNER_RADIUS, 0, "Inner radius: ", "dp");
         setupSlider(R.id.gap_seek, R.id.gap_label,
-                "gap_degrees", 0, 0, "Slice gap: ", "\u00B0");
+                Prefs.KEY_GAP_DEGREES, Prefs.DEFAULT_GAP_DEGREES, 0, "Slice gap: ", "\u00B0");
         setupSlider(R.id.arc_span_seek, R.id.arc_span_label,
-                "arc_span", 180, 90, "Arc span: ", "\u00B0");
+                Prefs.KEY_ARC_SPAN, Prefs.DEFAULT_ARC_SPAN, 90, "Arc span: ", "\u00B0");
 
         // Trigger zone
         setupSlider(R.id.trigger_width_seek, R.id.trigger_width_label,
-                "trigger_width", 20, 5, "Width: ", "dp");
+                Prefs.KEY_TRIGGER_WIDTH, Prefs.DEFAULT_TRIGGER_WIDTH, 5, "Width: ", "dp");
         setupSlider(R.id.trigger_height_seek, R.id.trigger_height_label,
-                "trigger_height", 43, 10, "Height: ", "%");
+                Prefs.KEY_TRIGGER_HEIGHT, Prefs.DEFAULT_TRIGGER_HEIGHT, 10, "Height: ", "%");
         setupSlider(R.id.trigger_pos_seek, R.id.trigger_pos_label,
-                "trigger_pos", 44, 0, "Position: ", "%");
+                Prefs.KEY_TRIGGER_POS, Prefs.DEFAULT_TRIGGER_POS, 0, "Position: ", "%");
 
         // Vibration
         setupSlider(R.id.vibe_tick_seek, R.id.vibe_tick_label,
-                "vibe_tick", 60, 0, "Tick amplitude: ", "");
+                Prefs.KEY_VIBE_TICK, Prefs.DEFAULT_VIBE_TICK, 0, "Tick amplitude: ", "");
         setupSlider(R.id.vibe_select_seek, R.id.vibe_select_label,
-                "vibe_select", 120, 0, "Select amplitude: ", "");
+                Prefs.KEY_VIBE_SELECT, Prefs.DEFAULT_VIBE_SELECT, 0, "Select amplitude: ", "");
         setupSlider(R.id.vibe_tick_ms_seek, R.id.vibe_tick_ms_label,
-                "vibe_tick_ms", 10, 1, "Tick duration: ", "ms");
+                Prefs.KEY_VIBE_TICK_MS, Prefs.DEFAULT_VIBE_TICK_MS, 1, "Tick duration: ", "ms");
         setupSlider(R.id.vibe_select_ms_seek, R.id.vibe_select_ms_label,
-                "vibe_select_ms", 20, 1, "Select duration: ", "ms");
+                Prefs.KEY_VIBE_SELECT_MS, Prefs.DEFAULT_VIBE_SELECT_MS, 1, "Select duration: ", "ms");
 
         // Backup
         findViewById(R.id.btn_export).setOnClickListener(v -> {
@@ -115,14 +115,14 @@ public class SettingsActivity extends Activity {
     private void setupStrokeWidthSlider() {
         SeekBar seek = findViewById(R.id.stroke_width_seek);
         TextView label = findViewById(R.id.stroke_width_label);
-        int tenths = prefs.getInt("stroke_width_tenths", 15);
+        int tenths = prefs.getInt(Prefs.KEY_STROKE_WIDTH_TENTHS, Prefs.DEFAULT_STROKE_WIDTH_TENTHS);
         seek.setProgress(tenths);
         label.setText("Stroke width: " + (tenths / 10) + "." + (tenths % 10) + "dp");
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar sb, int progress, boolean user) {
                 label.setText("Stroke width: " + (progress / 10) + "." + (progress % 10) + "dp");
                 if (user) {
-                    prefs.edit().putInt("stroke_width_tenths", progress).apply();
+                    prefs.edit().putInt(Prefs.KEY_STROKE_WIDTH_TENTHS, progress).apply();
                     notifyServiceReload();
                 }
             }
