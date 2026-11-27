@@ -235,6 +235,7 @@ public class SettingsActivity extends Activity {
             JSONArray itemsArr = new JSONArray();
             for (PieItem item : items) {
                 JSONObject obj = new JSONObject();
+                obj.put("id", item.id);
                 obj.put("level", item.level);
                 obj.put("position", item.position);
                 obj.put("name", item.name);
@@ -290,6 +291,9 @@ public class SettingsActivity extends Activity {
             for (int i = 0; i < count; i++) {
                 JSONObject obj = itemsArr.getJSONObject(i);
                 PieItem item = new PieItem();
+                // Keep exported ids so children's parentId still points at their folder;
+                // older exports lack ids and get fresh ones
+                item.id = obj.optInt("id", 0);
                 item.level = obj.getInt("level");
                 item.position = obj.getInt("position");
                 item.name = obj.optString("name", null);
