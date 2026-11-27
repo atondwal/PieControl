@@ -25,6 +25,9 @@
     <string name="move_down">Move Down</string>
     <string name="move_to_level">Move to Level\u2026</string>
     <string name="replace_app">Replace App</string>
+    <string name="set_link">Set Link…</string>
+    <string name="link_hint">Link to open instead of the app (blank for none)</string>
+    <string name="save">Save</string>
     <string name="delete">Delete</string>
     <string name="delete_folder">Delete Folder</string>
     <string name="add_app">Add App</string>

@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 
@@ -31,7 +32,9 @@ public class AppLauncher {
 
     private static void start(Context context, PieItem item, Bundle options) {
         Intent intent = null;
-        if (item.activityName != null && !item.activityName.isEmpty()) {
+        if (item.uri != null) {
+            intent = new Intent(Intent.ACTION_VIEW, Uri.parse(item.uri));
+        } else if (item.activityName != null && !item.activityName.isEmpty()) {
             intent = new Intent(Intent.ACTION_MAIN);
             intent.setComponent(new ComponentName(item.packageName, item.activityName));
         }

@@ -343,6 +343,8 @@ public class MainActivity extends Activity {
                 Intent i = new Intent(this, AppPickerActivity.class);
                 startActivityForResult(i, REQ_APP_REPLACE);
             });
+            options.add(getString(R.string.set_link));
+            actions.add(() -> showSetLinkDialog(item));
         }
 
         options.add(getString(R.string.delete));
@@ -351,6 +353,23 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle(item.name)
                 .setItems(options.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .show();
+    }
+
+    private void showSetLinkDialog(PieItem item) {
+        EditText input = new EditText(this);
+        input.setHint(R.string.link_hint);
+        input.setText(item.uri);
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.set_link)
+                .setView(input)
+                .setPositiveButton(R.string.save, (d, w) -> {
+                    String link = input.getText().toString().trim();
+                    item.uri = link.isEmpty() ? null : link;
+                    dao.update(item);
+                    notifyServiceReload();
+                })
+                .setNegativeButton(R.string.cancel, null)
                 .show();
     }
 
@@ -419,6 +438,7 @@ public class MainActivity extends Activity {
                     moved.name = item.name;
                     moved.packageName = item.packageName;
                     moved.activityName = item.activityName;
+                    moved.uri = item.uri;
                     moved.parentId = item.parentId;
                     moved.isFolder = item.isFolder;
                     dao.insert(moved);

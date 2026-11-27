@@ -240,6 +240,7 @@ public class SettingsActivity extends Activity {
                 obj.put("name", item.name);
                 obj.put("packageName", item.packageName);
                 obj.put("activityName", item.activityName);
+                obj.put("uri", item.uri);
                 obj.put("parentId", item.parentId);
                 obj.put("isFolder", item.isFolder);
                 itemsArr.put(obj);
@@ -294,6 +295,7 @@ public class SettingsActivity extends Activity {
                 item.name = obj.optString("name", null);
                 item.packageName = obj.optString("packageName", null);
                 item.activityName = obj.optString("activityName", null);
+                item.uri = obj.optString("uri", null);
                 item.parentId = obj.optInt("parentId", 0);
                 item.isFolder = obj.optBoolean("isFolder", false);
                 dao.insert(item);

@@ -14,6 +14,8 @@ public class PieItem {
     public String name;
     public String packageName;
     public String activityName;
+    // When set, launching opens this link instead of the app
+    public String uri;
 
     @ColumnInfo(defaultValue = "0")
     public int parentId;
