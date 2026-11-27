@@ -70,8 +70,14 @@ public class PieView extends View {
     private final Handler dwellHandler = new Handler(Looper.getMainLooper());
     private Runnable dwellRunnable;
 
+    // Holding an app slot this long arms a floating launch; longer than
+    // DWELL_MS so the two haptics feel distinct
+    private static final long HOLD_TO_FLOAT_MS = 700;
+    private boolean floatArmed;
+
     public interface OnItemSelectedListener {
         void onItemSelected(PieItem item);
+        void onItemFloated(PieItem item);
         void onDismiss();
     }
 
@@ -306,8 +312,15 @@ public class PieView extends View {
         }
     }
 
+    private void armFloat() {
+        floatArmed = true;
+        if (vibeSelectAmplitude > 0)
+            vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
+    }
+
     private void startDwellTimer() {
         cancelDwell();
+        floatArmed = false;
         // Check if current highlight is on a folder or back button
         if (highlightCenter && !parentStack.isEmpty()) {
             dwellRunnable = this::navigateBack;
@@ -320,6 +333,9 @@ public class PieView extends View {
                 if (item.isFolder) {
                     dwellRunnable = () -> navigateIntoFolder(item);
                     dwellHandler.postDelayed(dwellRunnable, DWELL_MS);
+                } else {
+                    dwellRunnable = this::armFloat;
+                    dwellHandler.postDelayed(dwellRunnable, HOLD_TO_FLOAT_MS);
                 }
             }
         }
@@ -364,7 +380,10 @@ public class PieView extends View {
                         } else {
                             if (vibeSelectAmplitude > 0)
                                 vibrator.vibrate(VibrationEffect.createOneShot(vibeSelectDuration, vibeSelectAmplitude));
-                            if (listener != null) listener.onItemSelected(selected);
+                            if (listener != null) {
+                                if (floatArmed) listener.onItemFloated(selected);
+                                else listener.onItemSelected(selected);
+                            }
                         }
                     } else {
                         if (listener != null) listener.onDismiss();

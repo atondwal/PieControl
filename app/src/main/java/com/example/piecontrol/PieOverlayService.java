@@ -146,6 +146,12 @@ public class PieOverlayService extends Service {
             }
 
             @Override
+            public void onItemFloated(PieItem item) {
+                AppLauncher.launchFloating(PieOverlayService.this, item);
+                removePie();
+            }
+
+            @Override
             public void onDismiss() {
                 removePie();
             }
